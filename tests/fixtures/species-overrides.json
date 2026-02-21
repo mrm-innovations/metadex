@@ -1,0 +1,22 @@
+{
+  "1": {
+    "name": "bulbasaur",
+    "isLegendary": false,
+    "isMythical": false
+  },
+  "6": {
+    "name": "charizard",
+    "isLegendary": false,
+    "isMythical": false
+  },
+  "150": {
+    "name": "mewtwo",
+    "isLegendary": true,
+    "isMythical": false
+  },
+  "151": {
+    "name": "mew",
+    "isLegendary": false,
+    "isMythical": true
+  }
+}

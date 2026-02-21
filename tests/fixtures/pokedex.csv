@@ -1,0 +1,9 @@
+Nat,Pokemon,Type I,Type II,"HP
+Pogo","Atk
+Pogo","Def
+Pogo","MAX
+CP lvl 40","MAX
+CP lvl 50",HP,Atk,Def,SpA,SpD,Spe,Total
+1,Bulbasaur,Grass,Poison,128,118,111,1115,1260,45,49,49,65,65,45,318
+4,Charmander,Fire,,118,116,93,980,1108,39,52,43,60,50,65,309
+6,Charizard,Fire,Flying,186,223,173,2889,3266,78,84,78,109,85,100,534
