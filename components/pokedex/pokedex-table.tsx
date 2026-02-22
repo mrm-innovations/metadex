@@ -41,13 +41,13 @@ function MobileStatPill({
   return (
     <div
       className={cn(
-        "inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs",
+        "inline-flex h-7 shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[11px]",
         emphasize ? "border-primary/40 bg-primary/6" : undefined,
       )}
     >
       <Icon className="text-muted-foreground size-3.5" />
-      <p className="text-muted-foreground uppercase tracking-wide">{label}</p>
-      <p className="text-sm font-semibold tabular-nums">{formatNumber(value)}</p>
+      <p className="text-muted-foreground text-[10px] font-medium uppercase tracking-wide">{label}</p>
+      <p className="text-sm font-semibold tabular-nums leading-none">{formatNumber(value)}</p>
     </div>
   );
 }
@@ -167,12 +167,10 @@ export function PokedexTable({
 
                 <div className="bg-border h-px" />
 
-                <div className="overflow-x-auto pb-1">
-                  <div className="flex min-w-max gap-1.5 pr-1">
-                    <MobileStatPill icon={SwordsIcon} label="ATK" value={row.pogoAtk} />
-                    <MobileStatPill icon={ShieldIcon} label="DEF" value={row.pogoDef} />
-                    <MobileStatPill icon={HeartPulseIcon} label="HP" value={row.pogoHp} />
-                  </div>
+                <div className="flex flex-wrap gap-1.5">
+                  <MobileStatPill icon={SwordsIcon} label="ATK" value={row.pogoAtk} />
+                  <MobileStatPill icon={ShieldIcon} label="DEF" value={row.pogoDef} />
+                  <MobileStatPill icon={HeartPulseIcon} label="HP" value={row.pogoHp} />
                 </div>
               </CardContent>
             </Card>

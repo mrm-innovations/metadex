@@ -101,24 +101,26 @@ export function SuggestedTeammatesCard({
                 <Link
                   key={`${entry.row.nat}-${entry.row.name}`}
                   href={`/pokemon/${encodeURIComponent(entry.row.nat)}`}
-                  className="inline-flex rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2"
+                  className="inline-flex w-full rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 sm:w-auto"
                   title={`${formatCoveredTypes(entry.coveredWeaknesses)} | Coverage ${formatCoverageScore(entry.coverage)} | League Fit ${formatLeagueFit(entry.leagueFit)}`}
                 >
-                  <Pill className="h-10 gap-2.5 px-3 pr-3 text-sm font-semibold">
-                    {iconUrl ? (
-                      <Image
-                        src={iconUrl}
-                        alt={entry.row.name}
-                        width={24}
-                        height={24}
-                        unoptimized
-                        className="size-6 object-contain"
-                      />
-                    ) : (
-                      <span className="bg-muted size-6 rounded-full" />
-                    )}
-                    <span>{entry.row.name}</span>
-                    <span className={cn("text-foreground/80 ml-1 inline-flex items-center gap-1 text-[10px] font-medium")}>
+                  <Pill className="min-h-10 h-auto w-full flex-col items-start gap-1.5 px-3 py-2 text-sm font-semibold sm:h-10 sm:w-auto sm:flex-row sm:items-center sm:gap-2.5 sm:py-0 sm:pr-3">
+                    <span className="flex min-w-0 items-center gap-2.5">
+                      {iconUrl ? (
+                        <Image
+                          src={iconUrl}
+                          alt={entry.row.name}
+                          width={24}
+                          height={24}
+                          unoptimized
+                          className="size-6 object-contain"
+                        />
+                      ) : (
+                        <span className="bg-muted size-6 rounded-full" />
+                      )}
+                      <span className="truncate">{entry.row.name}</span>
+                    </span>
+                    <span className={cn("text-foreground/80 ml-0 inline-flex flex-wrap items-center gap-1 text-[10px] font-medium sm:ml-1")}>
                       <span className="bg-background/80 rounded border border-border/60 px-1.5 py-0.5">
                         Cov {formatCoverageScore(entry.coverage)}
                       </span>

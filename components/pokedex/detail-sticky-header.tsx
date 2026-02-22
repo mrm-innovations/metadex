@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ArrowLeftIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { useDetailLeague } from "@/components/pokedex/detail-league-context";
@@ -37,13 +38,18 @@ export function DetailStickyHeader({ pokemonName }: { pokemonName: string }) {
         )}
       />
       <div className="flex items-center justify-between gap-2 px-1 py-1">
-        <Link href="/" className="text-sm font-medium underline-offset-4 hover:underline">
-          Back to Pokedex
+        <Link
+          href="/"
+          className="inline-flex h-9 items-center rounded-md border px-2 text-sm font-medium sm:px-3"
+          aria-label="Back to Pokedex"
+        >
+          <ArrowLeftIcon className="size-4" />
+          <span className="sr-only sm:not-sr-only sm:ml-1.5">Back to Pokedex</span>
         </Link>
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
           {allowAllLeagues ? (
             <Select value={league} onValueChange={(value) => setLeague(value as typeof league)}>
-              <SelectTrigger className="h-9 w-[170px]" data-testid="detail-league-select" aria-label="Global league selector">
+              <SelectTrigger className="h-9 w-[150px] sm:w-[170px]" data-testid="detail-league-select" aria-label="Global league selector">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

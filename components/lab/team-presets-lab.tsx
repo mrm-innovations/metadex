@@ -794,8 +794,8 @@ export function TeamPresetsLab({
           ) : null}
           {replacementSuggestions ? (
             <div className="space-y-2 rounded-md border border-sky-500/30 bg-sky-500/10 p-2.5">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-xs font-medium text-sky-700 dark:text-sky-300">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs leading-5 font-medium text-sky-700 dark:text-sky-300">
                   Suggested replacements for Slot {replacementSuggestions.replaceIndex + 1} (
                   {replacementSuggestions.replace.name}){" "}
                   {replacementSuggestions.focus === "core"
@@ -806,7 +806,7 @@ export function TeamPresetsLab({
                   <Button
                     type="button"
                     size="sm"
-                    className="h-7 rounded-full px-3 text-xs"
+                    className="h-8 w-full rounded-full px-3 text-xs sm:h-7 sm:w-auto"
                     onClick={() => onApplySuggestion(replacementSuggestions.candidates[0].row.nat)}
                   >
                     Apply best
@@ -820,7 +820,7 @@ export function TeamPresetsLab({
                   return (
                     <div
                       key={`replacement-${candidate.row.nat}`}
-                      className="flex items-center justify-between gap-2 rounded-md border border-sky-500/30 bg-background/70 px-2 py-1.5"
+                      className="flex flex-col gap-2 rounded-md border border-sky-500/30 bg-background/70 px-2 py-2 sm:flex-row sm:items-center sm:justify-between sm:py-1.5"
                     >
                       <div className="flex min-w-0 items-center gap-2">
                         <span className="text-muted-foreground text-xs">#{index + 1}</span>
@@ -836,15 +836,24 @@ export function TeamPresetsLab({
                         ) : (
                           <span className="bg-muted size-6 rounded-full" />
                         )}
-                        <span className="truncate text-xs font-medium">{candidate.row.name}</span>
+                        <span className="truncate text-sm font-medium sm:text-xs">{candidate.row.name}</span>
                       </div>
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex flex-wrap items-center gap-1.5 sm:justify-end">
                         <Badge variant="outline" className="h-6 rounded-full px-2 text-[10px]">
-                          {replacementSuggestions.focus === "core" ? "Core Cov" : "Cov"}{" "}
+                          {replacementSuggestions.focus === "core" ? (
+                            <>
+                              <span className="sm:hidden">Cov</span>
+                              <span className="hidden sm:inline">Core Cov</span>
+                            </>
+                          ) : (
+                            "Cov"
+                          )}{" "}
                           {candidate.targetCoverage}
                         </Badge>
                         <Badge variant="outline" className="h-6 rounded-full px-2 text-[10px]">
-                          Team Cov {candidate.resistCoverage}
+                          <span className="sm:hidden">Team</span>
+                          <span className="hidden sm:inline">Team Cov</span>{" "}
+                          {candidate.resistCoverage}
                         </Badge>
                         <Badge variant="outline" className="h-6 rounded-full px-2 text-[10px]">
                           LFit {formatPercentOneDecimal(candidate.leagueFit)}
@@ -853,7 +862,7 @@ export function TeamPresetsLab({
                           type="button"
                           size="sm"
                           variant="outline"
-                          className="h-6 rounded-full px-2 text-[10px]"
+                          className="ml-auto h-7 rounded-full px-2.5 text-[10px] sm:ml-0 sm:h-6 sm:px-2"
                           onClick={() => onApplySuggestion(candidate.row.nat)}
                         >
                           Apply

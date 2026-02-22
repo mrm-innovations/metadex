@@ -1,6 +1,7 @@
 "use client";
 
-import { CheckIcon, ChevronsUpDownIcon } from "lucide-react";
+import { CheckIcon, ChevronDownIcon, ChevronsUpDownIcon } from "lucide-react";
+import { useMemo, useState } from "react";
 
 import { RemovablePill } from "@/components/pokedex/pill";
 import { Button } from "@/components/ui/button";
@@ -46,17 +47,70 @@ export function FiltersBar({
   onSortChange,
   onReset,
 }: FiltersBarProps) {
+  const advancedFiltersCount = useMemo(() => {
+    let count = 0;
+    if (selectedTypes.length > 0) {
+      count += selectedTypes.length;
+    }
+    if (classificationFilter !== "all") {
+      count += 1;
+    }
+    if (sortBy !== "nat") {
+      count += 1;
+    }
+    return count;
+  }, [classificationFilter, selectedTypes.length, sortBy]);
+
+  const [mobileFiltersOpenOverride, setMobileFiltersOpenOverride] = useState<boolean | null>(null);
+  const mobileFiltersOpen = mobileFiltersOpenOverride ?? advancedFiltersCount > 0;
+
   return (
     <div className="space-y-3">
-      <div className="grid gap-3 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
-        <Input
-          value={searchTerm}
-          onChange={(event) => onSearchChange(event.target.value)}
-          placeholder="Search Pokemon by name..."
-          aria-label="Search Pokemon by name"
-          className="bg-background"
-        />
+      <Input
+        value={searchTerm}
+        onChange={(event) => onSearchChange(event.target.value)}
+        placeholder="Search Pokemon by name..."
+        aria-label="Search Pokemon by name"
+        className="bg-background"
+      />
 
+      <div className="md:hidden">
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full justify-between"
+          onClick={() =>
+            setMobileFiltersOpenOverride(
+              (current) => !(current ?? (advancedFiltersCount > 0)),
+            )
+          }
+          aria-expanded={mobileFiltersOpen}
+          aria-label={mobileFiltersOpen ? "Hide filters" : "Show filters"}
+        >
+          <span className="inline-flex items-center gap-2">
+            <span>Filters</span>
+            {advancedFiltersCount > 0 ? (
+              <span className="bg-muted text-muted-foreground rounded-full px-1.5 py-0.5 text-[10px] font-medium">
+                {advancedFiltersCount}
+              </span>
+            ) : null}
+          </span>
+          <ChevronDownIcon
+            className={cn(
+              "size-4 transition-transform",
+              mobileFiltersOpen ? "rotate-180" : "rotate-0",
+            )}
+          />
+        </Button>
+      </div>
+
+      <div
+        className={cn(
+          "grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]",
+          mobileFiltersOpen ? "grid-cols-1" : "hidden",
+          "md:grid",
+        )}
+      >
         <Popover>
           <PopoverTrigger asChild>
             <Button

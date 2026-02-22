@@ -65,12 +65,13 @@ export function SimilarPokemonCard({
                 <Link
                   key={`${entry.row.nat}-${entry.row.name}`}
                   href={`/pokemon/${encodeURIComponent(entry.row.nat)}`}
-                  className="inline-flex rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2"
+                  className="inline-flex w-full rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 sm:w-auto"
                 >
                   <PokemonMetricPill
                     name={entry.row.name}
                     nat={entry.row.nat}
                     spriteUrl={entry.row.spriteUrl}
+                    mobileStacked
                     metrics={[
                       { label: "Sim", value: formatSimilarity(entry.score) },
                       ...(showDeepAnalytics

@@ -91,9 +91,12 @@ type MatchupConfidence = {
   notes: string[];
 };
 
+type TimelineFilter = "all" | "charged" | "shielded";
+
 const DEFAULT_LEFT_NAT = "3";
 const DEFAULT_RIGHT_NAT = "6";
 const TIMELINE_PREVIEW = 12;
+const TIMELINE_PAGE_SIZE = 10;
 
 function formatNatLabel(nat: string): string {
   const parsed = Number.parseFloat(nat.replace(/[^0-9.]/g, ""));
@@ -112,20 +115,42 @@ function getListSpriteUrl(nat: string): string | undefined {
   return undefined;
 }
 
-function formatMoveMeta(
-  move: MoveEntry | null,
-  category: "fast" | "charged",
-): string {
-  if (!move) {
-    return "-";
-  }
+function MoveMetaChips({
+  move,
+  category,
+  label,
+}: {
+  move: MoveEntry | null;
+  category: "fast" | "charged";
+  label: string;
+}) {
+  const power = move?.power ?? 0;
+  const turns = move?.turns ?? 0;
+  const energyValue = category === "fast" ? move?.energyGain ?? 0 : move?.energyCost ?? 0;
+  const energyLabel = category === "fast" ? `+Energy ${energyValue}` : `Cost ${energyValue}`;
 
-  const power = move.power ?? 0;
-  const turns = move.turns ?? 0;
-  if (category === "fast") {
-    return `P${power} E+${move.energyGain ?? 0} ${turns}t`;
-  }
-  return `P${power} E-${move.energyCost ?? 0} ${turns}t`;
+  return (
+    <div className="bg-muted/30 flex items-center gap-1.5 rounded-md border px-2 py-1">
+      <span className="text-muted-foreground text-[10px] font-medium">{label}</span>
+      <Badge variant="outline" className="h-5 rounded-full px-1.5 text-[10px]">
+        Power {power}
+      </Badge>
+      <Badge
+        variant="outline"
+        className={cn(
+          "h-5 rounded-full px-1.5 text-[10px]",
+          category === "fast"
+            ? "border-emerald-500/35 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+            : "border-amber-500/35 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+        )}
+      >
+        {energyLabel}
+      </Badge>
+      <Badge variant="outline" className="h-5 rounded-full px-1.5 text-[10px]">
+        Turns {turns}
+      </Badge>
+    </div>
+  );
 }
 
 function formatShieldReason(reason: MatchupEvent["shieldReason"]): string | null {
@@ -139,6 +164,28 @@ function formatShieldReason(reason: MatchupEvent["shieldReason"]): string | null
     return "High damage";
   }
   return "Low HP preserve";
+}
+
+function getActionBadgeClass(action: MatchupEvent["action"]): string {
+  if (action === "charged") {
+    return "border-amber-500/35 bg-amber-500/10 text-amber-700 dark:text-amber-300";
+  }
+  return "border-sky-500/35 bg-sky-500/10 text-sky-700 dark:text-sky-300";
+}
+
+function getDerivedInitialHp(result: MatchupResult, target: "left" | "right"): number {
+  const events = result.timeline.filter((event) => event.target === target);
+  if (events.length === 0) {
+    return target === "left" ? Math.max(1, result.left.hpRemaining) : Math.max(1, result.right.hpRemaining);
+  }
+
+  let inferred = 0;
+  for (const event of events) {
+    inferred = Math.max(inferred, event.targetHpAfter + Math.max(0, event.damage));
+  }
+
+  const current = target === "left" ? result.left.hpRemaining : result.right.hpRemaining;
+  return Math.max(1, inferred, current);
 }
 
 function dedupeMoves(moves: MoveEntry[]): MoveEntry[] {
@@ -308,7 +355,8 @@ export function MatchupSimulator({ rows }: { rows: PokemonOption[] }) {
   const [resultError, setResultError] = useState<string | null>(null);
   const [result, setResult] = useState<MatchupResult | null>(null);
   const [resultConfidence, setResultConfidence] = useState<MatchupConfidence | null>(null);
-  const [showFullTimeline, setShowFullTimeline] = useState(false);
+  const [visibleTimelineCount, setVisibleTimelineCount] = useState(TIMELINE_PREVIEW);
+  const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>("all");
   const [isSwapping, setIsSwapping] = useState(false);
   const swapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -448,7 +496,8 @@ export function MatchupSimulator({ rows }: { rows: PokemonOption[] }) {
     }
     setResultLoading(true);
     setResultError(null);
-    setShowFullTimeline(false);
+    setVisibleTimelineCount(TIMELINE_PREVIEW);
+    setTimelineFilter("all");
 
     const params = new URLSearchParams({
       league,
@@ -532,15 +581,34 @@ export function MatchupSimulator({ rows }: { rows: PokemonOption[] }) {
     };
   }, []);
 
-  const timelineRows = useMemo(() => {
+  const filteredTimeline = useMemo(() => {
     if (!result) {
       return [];
     }
-    if (showFullTimeline) {
-      return result.timeline;
+    if (timelineFilter === "charged") {
+      return result.timeline.filter((event) => event.action === "charged");
     }
-    return result.timeline.slice(0, TIMELINE_PREVIEW);
-  }, [result, showFullTimeline]);
+    if (timelineFilter === "shielded") {
+      return result.timeline.filter((event) => event.shielded);
+    }
+    return result.timeline;
+  }, [result, timelineFilter]);
+  const timelineRows = useMemo(() => {
+    return filteredTimeline.slice(0, visibleTimelineCount);
+  }, [filteredTimeline, visibleTimelineCount]);
+  const hiddenTimelineCount = useMemo(() => {
+    return Math.max(0, filteredTimeline.length - visibleTimelineCount);
+  }, [filteredTimeline.length, visibleTimelineCount]);
+  const timelineFilterCounts = useMemo(() => {
+    if (!result) {
+      return { all: 0, charged: 0, shielded: 0 };
+    }
+    return {
+      all: result.timeline.length,
+      charged: result.timeline.filter((event) => event.action === "charged").length,
+      shielded: result.timeline.filter((event) => event.shielded).length,
+    };
+  }, [result]);
 
   const matchupInsights = useMemo(() => {
     if (!result) {
@@ -682,6 +750,20 @@ export function MatchupSimulator({ rows }: { rows: PokemonOption[] }) {
       chargedPressureLeader,
     };
   }, [leftShields, matchupInsights, result, rightShields]);
+
+  const hpSnapshot = useMemo(() => {
+    if (!result) {
+      return null;
+    }
+    const leftMax = getDerivedInitialHp(result, "left");
+    const rightMax = getDerivedInitialHp(result, "right");
+    return {
+      leftMax,
+      rightMax,
+      leftPct: Math.max(0, Math.min(100, Math.round((result.left.hpRemaining / leftMax) * 100))),
+      rightPct: Math.max(0, Math.min(100, Math.round((result.right.hpRemaining / rightMax) * 100))),
+    };
+  }, [result]);
 
   const swapSides = () => {
     if (swapTimeoutRef.current) {
@@ -831,11 +913,12 @@ export function MatchupSimulator({ rows }: { rows: PokemonOption[] }) {
                         </Select>
                       </div>
                     </div>
-                    <div className="text-muted-foreground flex w-full flex-wrap items-center justify-center gap-1.5 text-[11px]">
-                      <p className="bg-muted/30 rounded-md border px-2 py-1">Fast: {formatMoveMeta(leftFastSelected, "fast")}</p>
-                      <p className="bg-muted/30 rounded-md border px-2 py-1">
-                        Charged: {formatMoveMeta(leftChargedSelected, "charged")}
-                      </p>
+                    <div className="flex w-full flex-col items-center gap-1.5">
+                      <div className="flex w-full flex-wrap items-center justify-center gap-1.5 text-[11px]">
+                        <MoveMetaChips move={leftFastSelected} category="fast" label="Fast" />
+                        <MoveMetaChips move={leftChargedSelected} category="charged" label="Charged" />
+                      </div>
+                      <p className="text-muted-foreground text-[10px]">1 turn = 0.5s</p>
                     </div>
                   </>
                 )}
@@ -902,11 +985,12 @@ export function MatchupSimulator({ rows }: { rows: PokemonOption[] }) {
                         </Select>
                       </div>
                     </div>
-                    <div className="text-muted-foreground flex w-full flex-wrap items-center justify-center gap-1.5 text-[11px]">
-                      <p className="bg-muted/30 rounded-md border px-2 py-1">Fast: {formatMoveMeta(rightFastSelected, "fast")}</p>
-                      <p className="bg-muted/30 rounded-md border px-2 py-1">
-                        Charged: {formatMoveMeta(rightChargedSelected, "charged")}
-                      </p>
+                    <div className="flex w-full flex-col items-center gap-1.5">
+                      <div className="flex w-full flex-wrap items-center justify-center gap-1.5 text-[11px]">
+                        <MoveMetaChips move={rightFastSelected} category="fast" label="Fast" />
+                        <MoveMetaChips move={rightChargedSelected} category="charged" label="Charged" />
+                      </div>
+                      <p className="text-muted-foreground text-[10px]">1 turn = 0.5s</p>
                     </div>
                   </>
                 )}
@@ -1022,7 +1106,16 @@ export function MatchupSimulator({ rows }: { rows: PokemonOption[] }) {
                   <TimerIcon className="size-3.5" />
                   Turns: {result.turnsElapsed}
                 </Badge>
-                <Badge variant="outline">Reason: {result.reason === "faint" ? "Faint" : "Turn limit"}</Badge>
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    result.reason === "faint"
+                      ? "border-rose-500/35 bg-rose-500/10 text-rose-700 dark:text-rose-300"
+                      : "border-amber-500/35 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+                  )}
+                >
+                  Reason: {result.reason === "faint" ? "Faint" : "Turn limit"}
+                </Badge>
               </div>
 
               <div className="grid gap-2 md:grid-cols-2">
@@ -1053,6 +1146,20 @@ export function MatchupSimulator({ rows }: { rows: PokemonOption[] }) {
                       <SwordsIcon className="size-3.5" /> HP {result.left.hpRemaining}
                     </span>
                   </div>
+                  {hpSnapshot ? (
+                    <div className="mt-2 space-y-1">
+                      <div className="text-muted-foreground flex items-center justify-between text-[11px]">
+                        <span>HP</span>
+                        <span className="tabular-nums">{result.left.hpRemaining}/{hpSnapshot.leftMax}</span>
+                      </div>
+                      <div className="bg-muted h-1.5 w-full overflow-hidden rounded-full border">
+                        <div
+                          className="h-full rounded-full bg-emerald-500"
+                          style={{ width: `${hpSnapshot.leftPct}%` }}
+                        />
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
                 <div className="rounded-md border p-3">
                   <p className="flex items-center gap-2 text-sm font-semibold">
@@ -1081,6 +1188,20 @@ export function MatchupSimulator({ rows }: { rows: PokemonOption[] }) {
                       <SwordsIcon className="size-3.5" /> HP {result.right.hpRemaining}
                     </span>
                   </div>
+                  {hpSnapshot ? (
+                    <div className="mt-2 space-y-1">
+                      <div className="text-muted-foreground flex items-center justify-between text-[11px]">
+                        <span>HP</span>
+                        <span className="tabular-nums">{result.right.hpRemaining}/{hpSnapshot.rightMax}</span>
+                      </div>
+                      <div className="bg-muted h-1.5 w-full overflow-hidden rounded-full border">
+                        <div
+                          className="h-full rounded-full bg-sky-500"
+                          style={{ width: `${hpSnapshot.rightPct}%` }}
+                        />
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
@@ -1088,14 +1209,17 @@ export function MatchupSimulator({ rows }: { rows: PokemonOption[] }) {
                 <div className="space-y-2 rounded-md border p-3">
                   <p className="text-sm font-semibold">Matchup Insights</p>
                   {matchupInsights.keySwing ? (
-                    <p className="text-muted-foreground text-xs">
-                      Key swing: Turn {matchupInsights.keySwing.turn},{" "}
-                      {matchupInsights.keySwing.actor === "left"
-                        ? (leftSelected?.name ?? "Left")
-                        : (rightSelected?.name ?? "Right")}{" "}
-                      used {matchupInsights.keySwing.moveName} for{" "}
-                      {matchupInsights.keySwing.damage} damage.
-                    </p>
+                    <div className="rounded-md border border-sky-500/30 bg-sky-500/10 p-2">
+                      <p className="text-xs font-medium text-sky-700 dark:text-sky-300">Key swing</p>
+                      <p className="text-muted-foreground text-xs">
+                        Turn {matchupInsights.keySwing.turn}:{" "}
+                        {matchupInsights.keySwing.actor === "left"
+                          ? (leftSelected?.name ?? "Left")
+                          : (rightSelected?.name ?? "Right")}{" "}
+                        used {matchupInsights.keySwing.moveName} for{" "}
+                        {matchupInsights.keySwing.damage} damage.
+                      </p>
+                    </div>
                   ) : null}
 
                   <div className="grid gap-2 md:grid-cols-2">
@@ -1175,11 +1299,77 @@ export function MatchupSimulator({ rows }: { rows: PokemonOption[] }) {
               </Badge>
             </div>
           ) : null}
+          {result && result.timeline.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={timelineFilter === "all" ? "secondary" : "outline"}
+                className="h-7 rounded-full px-2 text-xs"
+                onClick={() => {
+                  setTimelineFilter("all");
+                  setVisibleTimelineCount(TIMELINE_PREVIEW);
+                }}
+              >
+                All ({timelineFilterCounts.all})
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={timelineFilter === "charged" ? "secondary" : "outline"}
+                className="h-7 rounded-full px-2 text-xs"
+                onClick={() => {
+                  setTimelineFilter("charged");
+                  setVisibleTimelineCount(TIMELINE_PREVIEW);
+                }}
+              >
+                Charged only ({timelineFilterCounts.charged})
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={timelineFilter === "shielded" ? "secondary" : "outline"}
+                className="h-7 rounded-full px-2 text-xs"
+                onClick={() => {
+                  setTimelineFilter("shielded");
+                  setVisibleTimelineCount(TIMELINE_PREVIEW);
+                }}
+              >
+                Shielded only ({timelineFilterCounts.shielded})
+              </Button>
+            </div>
+          ) : null}
           {resultLoading && !result ? (
             <Skeleton className="h-36 w-full" />
-          ) : result && result.timeline.length > 0 ? (
+          ) : result && filteredTimeline.length > 0 ? (
             <>
-              <div className="overflow-hidden rounded-md border">
+              <div className="space-y-2 sm:hidden">
+                {timelineRows.map((event, index) => (
+                  <div key={`${event.turn}-${event.actor}-${event.moveName}-${index}`} className="rounded-md border p-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-medium">Turn {event.turn}</span>
+                      <Badge variant="outline" className={cn("h-6 rounded-full px-2 text-[10px]", getActionBadgeClass(event.action))}>
+                        {event.action === "charged" ? "Charged" : "Fast"}
+                      </Badge>
+                    </div>
+                    <p className="mt-1 text-xs">
+                      {event.actor === "left" ? (leftSelected?.name ?? "Left") : (rightSelected?.name ?? "Right")} used {event.moveName}
+                    </p>
+                    <div className="text-muted-foreground mt-1 grid grid-cols-3 gap-1 text-[11px]">
+                      <span>Dmg {event.damage}</span>
+                      <span>
+                        Shield{" "}
+                        {event.shielded
+                          ? `Yes${event.shieldReason ? ` (${formatShieldReason(event.shieldReason) ?? ""})` : ""}`
+                          : "No"}
+                      </span>
+                      <span className="text-right">HP {event.targetHpAfter}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="hidden overflow-hidden rounded-md border sm:block">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -1197,7 +1387,11 @@ export function MatchupSimulator({ rows }: { rows: PokemonOption[] }) {
                       <TableRow key={`${event.turn}-${event.actor}-${event.moveName}-${index}`}>
                         <TableCell className="tabular-nums">{event.turn}</TableCell>
                         <TableCell>{event.actor === "left" ? (leftSelected?.name ?? "Left") : (rightSelected?.name ?? "Right")}</TableCell>
-                        <TableCell>{event.action}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className={cn("h-6 rounded-full px-2 text-[10px]", getActionBadgeClass(event.action))}>
+                            {event.action === "charged" ? "Charged" : "Fast"}
+                          </Badge>
+                        </TableCell>
                         <TableCell>{event.moveName}</TableCell>
                         <TableCell className="text-right tabular-nums">{event.damage}</TableCell>
                         <TableCell>
@@ -1211,19 +1405,47 @@ export function MatchupSimulator({ rows }: { rows: PokemonOption[] }) {
                   </TableBody>
                 </Table>
               </div>
-              {result.timeline.length > TIMELINE_PREVIEW ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowFullTimeline((current) => !current)}
-                >
-                  {showFullTimeline
-                    ? "Show less"
-                    : `Show ${result.timeline.length - TIMELINE_PREVIEW} more`}
-                </Button>
+              {filteredTimeline.length > TIMELINE_PREVIEW ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  {hiddenTimelineCount > 0 ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() =>
+                        setVisibleTimelineCount((current) =>
+                          Math.min(filteredTimeline.length, current + TIMELINE_PAGE_SIZE),
+                        )
+                      }
+                    >
+                      Show next {Math.min(TIMELINE_PAGE_SIZE, hiddenTimelineCount)} ({hiddenTimelineCount} left)
+                    </Button>
+                  ) : null}
+                  {hiddenTimelineCount > 0 ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setVisibleTimelineCount(filteredTimeline.length)}
+                    >
+                      Show all
+                    </Button>
+                  ) : null}
+                  {visibleTimelineCount > TIMELINE_PREVIEW ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setVisibleTimelineCount(TIMELINE_PREVIEW)}
+                    >
+                      Show less
+                    </Button>
+                  ) : null}
+                </div>
               ) : null}
             </>
+          ) : result && result.timeline.length > 0 ? (
+            <p className="text-muted-foreground text-sm">No events for this filter.</p>
           ) : (
             <p className="text-muted-foreground text-sm">No timeline yet.</p>
           )}

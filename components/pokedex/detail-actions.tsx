@@ -59,14 +59,14 @@ export function DetailActions({ pokemonName }: DetailActionsProps) {
   };
 
   return (
-    <div className="flex items-center gap-2">
-      <Button size="sm" variant="outline" onClick={onCopy} className="gap-1.5">
+    <div className="flex items-center gap-1.5 sm:gap-2">
+      <Button size="sm" variant="outline" onClick={onCopy} className="h-9 gap-1.5 px-2 sm:px-3" aria-label="Copy link">
         {copied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
-        {copied ? "Copied" : "Copy link"}
+        <span className="hidden sm:inline">{copied ? "Copied" : "Copy link"}</span>
       </Button>
-      <Button size="sm" variant="outline" onClick={onShare} className="gap-1.5">
+      <Button size="sm" variant="outline" onClick={onShare} className="h-9 gap-1.5 px-2 sm:px-3" aria-label="Share">
         <Share2Icon className="size-3.5" />
-        Share
+        <span className="hidden sm:inline">Share</span>
       </Button>
     </div>
   );
