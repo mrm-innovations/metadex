@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getEvolutionChainForNat, type EvolutionNode } from "@/lib/pokeapi";
-import { getDualTypeHeroTheme } from "@/lib/type-theme";
+import { getPrimaryTypeSurfaceTint } from "@/lib/type-theme";
 import { cn } from "@/lib/utils";
 
 function parseSpeciesNat(nat: string): number | null {
@@ -192,18 +192,16 @@ export async function EvolutionSection({
   nat,
   currentName,
   currentType1,
-  currentType2,
 }: {
   nat: string;
   currentName?: string;
   currentType1?: string;
-  currentType2?: string;
 }) {
   const currentSpeciesNat = parseSpeciesNat(nat);
   const { chain, error } = await loadEvolutionData(nat);
-  const currentTypeTheme = getDualTypeHeroTheme(currentType1, currentType2);
+  const currentTypeTheme = getPrimaryTypeSurfaceTint(currentType1);
   const currentNodeHighlightClass = cn(
-    currentTypeTheme.surfaceClass,
+    currentTypeTheme.bgClass,
     currentTypeTheme.borderClass,
   );
 

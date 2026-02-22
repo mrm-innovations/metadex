@@ -209,3 +209,29 @@ export function getDualTypeHeroTheme(type1?: string, type2?: string): {
     accentClass: `${primary.accentClass} dark:text-foreground`,
   };
 }
+
+const TYPE_SURFACE_TINT: Record<string, { bgClass: string; borderClass: string }> = {
+  normal: { bgClass: "bg-stone-500/10", borderClass: "border-stone-500/35" },
+  fire: { bgClass: "bg-orange-500/10", borderClass: "border-orange-500/35" },
+  water: { bgClass: "bg-blue-500/10", borderClass: "border-blue-500/35" },
+  electric: { bgClass: "bg-amber-500/10", borderClass: "border-amber-500/35" },
+  grass: { bgClass: "bg-emerald-500/10", borderClass: "border-emerald-500/35" },
+  ice: { bgClass: "bg-cyan-500/10", borderClass: "border-cyan-500/35" },
+  fighting: { bgClass: "bg-red-500/10", borderClass: "border-red-500/35" },
+  poison: { bgClass: "bg-violet-500/10", borderClass: "border-violet-500/35" },
+  ground: { bgClass: "bg-amber-600/10", borderClass: "border-amber-600/35" },
+  flying: { bgClass: "bg-sky-500/10", borderClass: "border-sky-500/35" },
+  psychic: { bgClass: "bg-pink-500/10", borderClass: "border-pink-500/35" },
+  bug: { bgClass: "bg-lime-500/10", borderClass: "border-lime-500/35" },
+  rock: { bgClass: "bg-yellow-600/10", borderClass: "border-yellow-600/35" },
+  ghost: { bgClass: "bg-indigo-500/10", borderClass: "border-indigo-500/35" },
+  dragon: { bgClass: "bg-purple-500/10", borderClass: "border-purple-500/35" },
+  dark: { bgClass: "bg-zinc-500/10", borderClass: "border-zinc-500/35" },
+  steel: { bgClass: "bg-slate-500/10", borderClass: "border-slate-500/35" },
+  fairy: { bgClass: "bg-rose-500/10", borderClass: "border-rose-500/35" },
+};
+
+export function getPrimaryTypeSurfaceTint(type?: string): { bgClass: string; borderClass: string } {
+  const normalized = normalizePokemonType(type);
+  return TYPE_SURFACE_TINT[normalized] ?? { bgClass: "bg-muted/10", borderClass: "border-border" };
+}
