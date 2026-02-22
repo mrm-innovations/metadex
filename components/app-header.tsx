@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { MenuIcon, XIcon } from "lucide-react";
+import { ExternalLinkIcon, MenuIcon, XIcon } from "lucide-react";
 import { useState } from "react";
 import { usePathname } from "next/navigation";
 
@@ -23,6 +23,16 @@ const NAV_ITEMS: NavItem[] = [
     isActive: (pathname) => pathname === "/" || pathname.startsWith("/pokemon/"),
   },
   {
+    href: "/rankings",
+    label: "Rankings",
+    isActive: (pathname) => pathname === "/rankings",
+  },
+  {
+    href: "/lab/matchup-sim",
+    label: "Lab",
+    isActive: (pathname) => pathname.startsWith("/lab/"),
+  },
+  {
     href: "/about",
     label: "About",
     isActive: (pathname) => pathname === "/about",
@@ -33,6 +43,8 @@ const NAV_ITEMS: NavItem[] = [
     isActive: (pathname) => pathname === "/api-reference",
   },
 ];
+
+const GITHUB_REPO_URL = "https://github.com/mrm-innovations/metadex";
 
 export function AppHeader() {
   const pathname = usePathname();
@@ -68,6 +80,15 @@ export function AppHeader() {
               </Link>
             );
           })}
+          <Link
+            href={GITHUB_REPO_URL}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="text-muted-foreground hover:text-foreground hover:bg-muted inline-flex items-center gap-1 rounded-md px-3 py-2 text-sm font-medium transition-colors"
+          >
+            <span>GitHub</span>
+            <ExternalLinkIcon className="size-3.5" />
+          </Link>
           <ThemeToggle />
         </nav>
 
@@ -103,6 +124,16 @@ export function AppHeader() {
                 </Link>
               );
             })}
+            <Link
+              href={GITHUB_REPO_URL}
+              target="_blank"
+              rel="noreferrer noopener"
+              onClick={() => setMenuOpen(false)}
+              className="text-muted-foreground hover:text-foreground hover:bg-muted inline-flex items-center gap-1 rounded-md px-3 py-2 text-sm font-medium transition-colors"
+            >
+              <span>GitHub</span>
+              <ExternalLinkIcon className="size-3.5" />
+            </Link>
           </nav>
         </div>
       ) : null}
