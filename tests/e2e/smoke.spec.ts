@@ -34,6 +34,20 @@ test("home and detail pages load with live dataset", async ({ page, request }) =
   await expect(page.getByText("PoGO HP")).toBeVisible();
 });
 
+test("rankings page loads and preserves selected league in detail links", async ({ page }) => {
+  await page.goto("/rankings");
+  await expect(page.getByRole("heading", { name: "Rankings" })).toBeVisible();
+  await expect(page.getByText("Results:")).toBeVisible();
+
+  await page.getByRole("button", { name: "PvP Proxy" }).click();
+  await page.getByRole("combobox", { name: "League selector" }).click();
+  await page.getByRole("option", { name: "Ultra League (2500)" }).click();
+
+  const firstDetailLink = page.locator("tbody tr a").first();
+  await expect(firstDetailLink).toBeVisible();
+  await expect(firstDetailLink).toHaveAttribute("href", /league=ultra/);
+});
+
 test("pvp api endpoint returns league-capped rankings", async ({ request }) => {
   const okResponse = await request.get("/api/pvp?nat=6&league=great&topN=5");
   expect(okResponse.ok()).toBeTruthy();
@@ -97,29 +111,82 @@ test("classification api endpoint resolves batched nat values", async ({ request
   expect(badResponse.status()).toBe(400);
 });
 
+test("matchup api endpoint runs simulation and validates required params", async ({ request }) => {
+  const pokedexResponse = await request.get("/api/pokedex");
+  expect(pokedexResponse.ok()).toBeTruthy();
+  const pokedexJson = (await pokedexResponse.json()) as {
+    data: Array<{ nat: string; name: string }>;
+  };
+  expect(pokedexJson.data.length).toBeGreaterThan(1);
+
+  const leftNat = pokedexJson.data[0].nat;
+  const rightNat = pokedexJson.data[1].nat;
+
+  const okResponse = await request.get(
+    `/api/matchup?leftNat=${encodeURIComponent(leftNat)}&rightNat=${encodeURIComponent(rightNat)}`,
+  );
+  const okJson = (await okResponse.json()) as {
+    error?: string;
+    message?: string;
+    data: {
+      winner: "left" | "right" | "draw";
+      turnsElapsed: number;
+      timeline: Array<{ action: string; moveName: string }>;
+    };
+  };
+  expect(
+    okResponse.ok(),
+    `status=${okResponse.status()} error=${okJson.error ?? "n/a"} message=${okJson.message ?? "n/a"}`,
+  ).toBeTruthy();
+
+  expect(["left", "right", "draw"]).toContain(okJson.data.winner);
+  expect(okJson.data.turnsElapsed).toBeGreaterThan(0);
+  expect(okJson.data.timeline.length).toBeGreaterThan(0);
+
+  const badResponse = await request.get("/api/matchup?leftNat=3");
+  expect(badResponse.status()).toBe(400);
+});
+
 test("pvp table updates across league selections", async ({ page }) => {
   await page.goto("/pokemon/6");
   await expect(page.getByTestId("pvp-section")).toBeVisible();
   await expect(page.getByTestId("pvp-table")).toBeVisible();
+  await expect(page.getByTestId("meta-rank-switcher")).toHaveAttribute("data-current-league", "great");
+  await expect(page.getByTestId("pvp-section")).toHaveAttribute("data-current-league", "great");
+  await expect(page.getByTestId("team-builder-card")).toHaveAttribute("data-current-league", "great");
+  await expect(page.getByTestId("suggested-teammates-card")).toHaveAttribute("data-current-league", "great");
+  await expect(page.getByTestId("counter-matchups-card")).toHaveAttribute("data-current-league", "great");
 
   const greatCp = parseNumber(await page.getByTestId("pvp-r1-cp").textContent());
   expect(greatCp).toBeLessThanOrEqual(1500);
 
-  await page.getByTestId("pvp-league-select").click();
+  await page.getByTestId("detail-league-select").click();
   await page.getByRole("option", { name: "Ultra League (2500)" }).click();
+  await expect(page.getByTestId("meta-rank-switcher")).toHaveAttribute("data-current-league", "ultra");
+  await expect(page.getByTestId("pvp-section")).toHaveAttribute("data-current-league", "ultra");
+  await expect(page.getByTestId("team-builder-card")).toHaveAttribute("data-current-league", "ultra");
+  await expect(page.getByTestId("suggested-teammates-card")).toHaveAttribute("data-current-league", "ultra");
+  await expect(page.getByTestId("counter-matchups-card")).toHaveAttribute("data-current-league", "ultra");
   await expect(page.getByTestId("pvp-table")).toBeVisible();
   const ultraCp = parseNumber(await page.getByTestId("pvp-r1-cp").textContent());
   expect(ultraCp).toBeLessThanOrEqual(2500);
   expect(ultraCp).toBeGreaterThan(greatCp);
+  await expect(page).toHaveURL(/league=ultra/);
 
-  await page.getByTestId("pvp-league-select").click();
+  await page.getByTestId("detail-league-select").click();
   await page.getByRole("option", { name: "Master League (No Cap)" }).click();
+  await expect(page.getByTestId("meta-rank-switcher")).toHaveAttribute("data-current-league", "master");
+  await expect(page.getByTestId("pvp-section")).toHaveAttribute("data-current-league", "master");
+  await expect(page.getByTestId("team-builder-card")).toHaveAttribute("data-current-league", "master");
+  await expect(page.getByTestId("suggested-teammates-card")).toHaveAttribute("data-current-league", "master");
+  await expect(page.getByTestId("counter-matchups-card")).toHaveAttribute("data-current-league", "master");
   await expect(page.getByTestId("pvp-table")).toBeVisible();
   const masterCp = parseNumber(await page.getByTestId("pvp-r1-cp").textContent());
   const masterLevel = parseNumber(await page.getByTestId("pvp-r1-level").textContent());
   expect(masterCp).toBeGreaterThan(2500);
   expect(masterCp).toBeGreaterThan(ultraCp);
   expect(masterLevel).toBe(50);
+  await expect(page).toHaveURL(/league=master/);
 });
 
 test("evolution section shows expected chain nodes and links", async ({ page }) => {
@@ -134,4 +201,24 @@ test("evolution section shows expected chain nodes and links", async ({ page }) 
   const charmanderLinks = evolution.getByRole("link", { name: /Charmander/i });
   await expect(charmanderLinks.first()).toBeVisible();
   await expect(charmanderLinks.first()).toHaveAttribute("href", "/pokemon/4");
+});
+
+test("lab matchup simulator page loads and can run simulation", async ({ page }) => {
+  await page.goto("/lab/matchup-sim");
+  await expect(page.getByRole("heading", { name: "Lab: Matchup Sim" })).toBeVisible();
+  await expect(page.getByTestId("matchup-sim-page")).toBeVisible();
+
+  await page.getByRole("button", { name: "Run simulation" }).click();
+  await expect(page.getByTestId("matchup-result-card")).toContainText("Winner:");
+});
+
+test("lab teams page loads and syncs league in URL", async ({ page }) => {
+  await page.goto("/lab/teams");
+  await expect(page.getByRole("heading", { name: "Lab: Teams" })).toBeVisible();
+  await expect(page.getByTestId("team-presets-lab")).toBeVisible();
+  await expect(page.getByText("Why This Score")).toBeVisible();
+
+  await page.getByRole("combobox", { name: "Team league selector" }).click();
+  await page.getByRole("option", { name: "Ultra League (2500)" }).click();
+  await expect(page).toHaveURL(/league=ultra/);
 });

@@ -1,0 +1,371 @@
+[
+  {
+    "id": "grass-vs-fire-baseline",
+    "description": "Fire/Flying baseline should beat Grass/Poison with comparable movesets.",
+    "left": {
+      "name": "Bulba-lite",
+      "type1": "Grass",
+      "type2": "Poison",
+      "atk": 118,
+      "def": 111,
+      "hp": 128,
+      "fastMove": { "name": "Vine Whip", "type": "Grass", "power": 7, "energyGain": 6, "turns": 1 },
+      "chargedMoves": [{ "name": "Power Whip", "type": "Grass", "power": 90, "energyCost": 50, "turns": 1 }]
+    },
+    "right": {
+      "name": "Char-lite",
+      "type1": "Fire",
+      "type2": "Flying",
+      "atk": 223,
+      "def": 173,
+      "hp": 186,
+      "fastMove": { "name": "Fire Spin", "type": "Fire", "power": 14, "energyGain": 10, "turns": 1 },
+      "chargedMoves": [{ "name": "Blast Burn", "type": "Fire", "power": 110, "energyCost": 50, "turns": 1 }]
+    },
+    "config": { "maxTurns": 300 },
+    "expected": {
+      "winner": "right",
+      "reason": "faint",
+      "timelineMin": 1
+    }
+  },
+  {
+    "id": "fire-vs-grass-mirror",
+    "description": "Type advantage mirror should flip winner when sides are swapped.",
+    "left": {
+      "name": "Char-lite",
+      "type1": "Fire",
+      "type2": "Flying",
+      "atk": 223,
+      "def": 173,
+      "hp": 186,
+      "fastMove": { "name": "Fire Spin", "type": "Fire", "power": 14, "energyGain": 10, "turns": 1 },
+      "chargedMoves": [{ "name": "Blast Burn", "type": "Fire", "power": 110, "energyCost": 50, "turns": 1 }]
+    },
+    "right": {
+      "name": "Bulba-lite",
+      "type1": "Grass",
+      "type2": "Poison",
+      "atk": 118,
+      "def": 111,
+      "hp": 128,
+      "fastMove": { "name": "Vine Whip", "type": "Grass", "power": 7, "energyGain": 6, "turns": 1 },
+      "chargedMoves": [{ "name": "Power Whip", "type": "Grass", "power": 90, "energyCost": 50, "turns": 1 }]
+    },
+    "config": { "maxTurns": 300 },
+    "expected": {
+      "winner": "left",
+      "reason": "faint",
+      "timelineMin": 1
+    }
+  },
+  {
+    "id": "shield-blocks-lethal",
+    "description": "Defender should shield a lethal charged move when shields are available.",
+    "left": {
+      "name": "Hydro Attacker",
+      "type1": "Water",
+      "atk": 220,
+      "def": 150,
+      "hp": 200,
+      "startingEnergy": 100,
+      "startingShields": 0,
+      "fastMove": { "name": "Bubble Tap", "type": "Water", "power": 3, "energyGain": 4, "turns": 1 },
+      "chargedMoves": [{ "name": "Hydro Cannon", "type": "Water", "power": 150, "energyCost": 50, "turns": 1 }]
+    },
+    "right": {
+      "name": "Shielded Defender",
+      "type1": "Fire",
+      "atk": 150,
+      "def": 120,
+      "hp": 140,
+      "startingShields": 1,
+      "fastMove": { "name": "Scratch", "type": "Normal", "power": 4, "energyGain": 4, "turns": 1 },
+      "chargedMoves": []
+    },
+    "config": { "maxTurns": 20 },
+    "expected": {
+      "winner": "left",
+      "reason": "faint",
+      "rightShieldsRemaining": 0,
+      "firstEvent": { "actor": "left", "action": "charged", "shielded": true }
+    }
+  },
+  {
+    "id": "no-shield-lethal-connects",
+    "description": "Without shields, the same charged move should land for full damage and end quickly.",
+    "left": {
+      "name": "Hydro Attacker",
+      "type1": "Water",
+      "atk": 220,
+      "def": 150,
+      "hp": 200,
+      "startingEnergy": 100,
+      "startingShields": 0,
+      "fastMove": { "name": "Bubble Tap", "type": "Water", "power": 3, "energyGain": 4, "turns": 1 },
+      "chargedMoves": [{ "name": "Hydro Cannon", "type": "Water", "power": 150, "energyCost": 50, "turns": 1 }]
+    },
+    "right": {
+      "name": "No Shield Defender",
+      "type1": "Fire",
+      "atk": 150,
+      "def": 120,
+      "hp": 140,
+      "startingShields": 0,
+      "fastMove": { "name": "Scratch", "type": "Normal", "power": 4, "energyGain": 4, "turns": 1 },
+      "chargedMoves": []
+    },
+    "config": { "maxTurns": 20 },
+    "expected": {
+      "winner": "left",
+      "reason": "faint",
+      "turnsElapsed": 1,
+      "timelineMax": 1,
+      "firstEvent": { "actor": "left", "action": "charged", "shielded": false }
+    }
+  },
+  {
+    "id": "cmp-higher-attack-wins",
+    "description": "When both sides are charged-ready, higher attack should win CMP and secure KO first.",
+    "left": {
+      "name": "High Atk",
+      "type1": "Normal",
+      "atk": 200,
+      "def": 150,
+      "hp": 120,
+      "startingEnergy": 100,
+      "startingShields": 0,
+      "fastMove": { "name": "Quick Jab", "type": "Normal", "power": 3, "energyGain": 4, "turns": 1 },
+      "chargedMoves": [{ "name": "Nuke", "type": "Normal", "power": 200, "energyCost": 50, "turns": 1 }]
+    },
+    "right": {
+      "name": "Lower Atk",
+      "type1": "Normal",
+      "atk": 180,
+      "def": 150,
+      "hp": 120,
+      "startingEnergy": 100,
+      "startingShields": 0,
+      "fastMove": { "name": "Quick Jab", "type": "Normal", "power": 3, "energyGain": 4, "turns": 1 },
+      "chargedMoves": [{ "name": "Nuke", "type": "Normal", "power": 200, "energyCost": 50, "turns": 1 }]
+    },
+    "config": { "maxTurns": 5 },
+    "expected": {
+      "winner": "left",
+      "reason": "faint",
+      "turnsElapsed": 1,
+      "timelineMax": 1,
+      "firstEvent": { "actor": "left", "action": "charged" }
+    }
+  },
+  {
+    "id": "cmp-tie-falls-back-left",
+    "description": "With equal attack CMP, deterministic tie-break should keep ordering stable.",
+    "left": {
+      "name": "Tie Left",
+      "type1": "Normal",
+      "atk": 180,
+      "def": 150,
+      "hp": 120,
+      "startingEnergy": 100,
+      "startingShields": 0,
+      "fastMove": { "name": "Quick Jab", "type": "Normal", "power": 3, "energyGain": 4, "turns": 1 },
+      "chargedMoves": [{ "name": "Nuke", "type": "Normal", "power": 200, "energyCost": 50, "turns": 1 }]
+    },
+    "right": {
+      "name": "Tie Right",
+      "type1": "Normal",
+      "atk": 180,
+      "def": 150,
+      "hp": 120,
+      "startingEnergy": 100,
+      "startingShields": 0,
+      "fastMove": { "name": "Quick Jab", "type": "Normal", "power": 3, "energyGain": 4, "turns": 1 },
+      "chargedMoves": [{ "name": "Nuke", "type": "Normal", "power": 200, "energyCost": 50, "turns": 1 }]
+    },
+    "config": { "maxTurns": 5 },
+    "expected": {
+      "winner": "left",
+      "reason": "faint",
+      "turnsElapsed": 1,
+      "timelineMax": 1,
+      "firstEvent": { "actor": "left", "action": "charged" }
+    }
+  },
+  {
+    "id": "turn-limit-draw",
+    "description": "Equal setup with short max turn should end in turn-limit draw.",
+    "left": {
+      "name": "Mirror A",
+      "type1": "Normal",
+      "atk": 100,
+      "def": 100,
+      "hp": 200,
+      "fastMove": { "name": "Light Hit", "type": "Normal", "power": 3, "energyGain": 5, "turns": 1 },
+      "chargedMoves": []
+    },
+    "right": {
+      "name": "Mirror B",
+      "type1": "Normal",
+      "atk": 100,
+      "def": 100,
+      "hp": 200,
+      "fastMove": { "name": "Light Hit", "type": "Normal", "power": 3, "energyGain": 5, "turns": 1 },
+      "chargedMoves": []
+    },
+    "config": { "maxTurns": 1 },
+    "expected": {
+      "winner": "draw",
+      "reason": "turn_limit",
+      "turnsElapsed": 1,
+      "timelineMin": 2
+    }
+  },
+  {
+    "id": "energy-clamped-at-100",
+    "description": "Fast move energy gain should never exceed the 100 energy cap.",
+    "left": {
+      "name": "Battery Left",
+      "type1": "Electric",
+      "atk": 100,
+      "def": 120,
+      "hp": 500,
+      "fastMove": { "name": "Spark Burst", "type": "Electric", "power": 2, "energyGain": 80, "turns": 1 },
+      "chargedMoves": []
+    },
+    "right": {
+      "name": "Battery Right",
+      "type1": "Water",
+      "atk": 100,
+      "def": 120,
+      "hp": 500,
+      "fastMove": { "name": "Tap", "type": "Normal", "power": 1, "energyGain": 2, "turns": 1 },
+      "chargedMoves": []
+    },
+    "config": { "maxTurns": 4 },
+    "expected": {
+      "reason": "turn_limit",
+      "maxActorEnergyAfter": 100
+    }
+  },
+  {
+    "id": "no-shields-picks-strongest-charged",
+    "description": "When defender has no shields, attacker should prefer the strongest charged option.",
+    "left": {
+      "name": "Chooser A",
+      "type1": "Water",
+      "atk": 170,
+      "def": 140,
+      "hp": 220,
+      "startingEnergy": 100,
+      "fastMove": { "name": "Splash", "type": "Water", "power": 2, "energyGain": 5, "turns": 1 },
+      "chargedMoves": [
+        { "name": "Cheap Shot", "type": "Water", "power": 50, "energyCost": 35, "turns": 1 },
+        { "name": "Nuke Blast", "type": "Water", "power": 110, "energyCost": 60, "turns": 1 }
+      ]
+    },
+    "right": {
+      "name": "No Shield Tank",
+      "type1": "Fire",
+      "atk": 140,
+      "def": 170,
+      "hp": 300,
+      "startingShields": 0,
+      "fastMove": { "name": "Scratch", "type": "Normal", "power": 3, "energyGain": 4, "turns": 1 },
+      "chargedMoves": []
+    },
+    "config": { "maxTurns": 5 },
+    "expected": {
+      "firstEvent": { "actor": "left", "action": "charged", "moveName": "Nuke Blast" }
+    }
+  },
+  {
+    "id": "shielded-low-energy-picks-cheapest",
+    "description": "With shields up and not enough energy to chain, attacker should throw cheapest charged move.",
+    "left": {
+      "name": "Chooser B",
+      "type1": "Water",
+      "atk": 170,
+      "def": 140,
+      "hp": 220,
+      "startingEnergy": 70,
+      "fastMove": { "name": "Splash", "type": "Water", "power": 2, "energyGain": 5, "turns": 1 },
+      "chargedMoves": [
+        { "name": "Cheap Shot", "type": "Water", "power": 40, "energyCost": 20, "turns": 1 },
+        { "name": "Nuke Blast", "type": "Water", "power": 120, "energyCost": 60, "turns": 1 }
+      ]
+    },
+    "right": {
+      "name": "Shield Tank",
+      "type1": "Fire",
+      "atk": 140,
+      "def": 170,
+      "hp": 400,
+      "startingShields": 1,
+      "fastMove": { "name": "Scratch", "type": "Normal", "power": 3, "energyGain": 4, "turns": 1 },
+      "chargedMoves": []
+    },
+    "config": { "maxTurns": 5 },
+    "expected": {
+      "firstEvent": { "actor": "left", "action": "charged", "moveName": "Cheap Shot" }
+    }
+  },
+  {
+    "id": "shielded-high-energy-picks-strongest",
+    "description": "With shields up but enough energy to chain, attacker can lead with stronger charged move.",
+    "left": {
+      "name": "Chooser C",
+      "type1": "Water",
+      "atk": 170,
+      "def": 140,
+      "hp": 220,
+      "startingEnergy": 90,
+      "fastMove": { "name": "Splash", "type": "Water", "power": 2, "energyGain": 5, "turns": 1 },
+      "chargedMoves": [
+        { "name": "Cheap Shot", "type": "Water", "power": 40, "energyCost": 20, "turns": 1 },
+        { "name": "Nuke Blast", "type": "Water", "power": 120, "energyCost": 60, "turns": 1 }
+      ]
+    },
+    "right": {
+      "name": "Shield Tank",
+      "type1": "Fire",
+      "atk": 140,
+      "def": 170,
+      "hp": 400,
+      "startingShields": 1,
+      "fastMove": { "name": "Scratch", "type": "Normal", "power": 3, "energyGain": 4, "turns": 1 },
+      "chargedMoves": []
+    },
+    "config": { "maxTurns": 5 },
+    "expected": {
+      "firstEvent": { "actor": "left", "action": "charged", "moveName": "Nuke Blast" }
+    }
+  },
+  {
+    "id": "slow-fast-move-lowers-action-frequency",
+    "description": "A 2-turn fast move should produce fewer actions than a 1-turn fast move over same horizon.",
+    "left": {
+      "name": "Slow Side",
+      "type1": "Normal",
+      "atk": 130,
+      "def": 130,
+      "hp": 260,
+      "fastMove": { "name": "Heavy Tap", "type": "Normal", "power": 6, "energyGain": 6, "turns": 2 },
+      "chargedMoves": []
+    },
+    "right": {
+      "name": "Fast Side",
+      "type1": "Normal",
+      "atk": 130,
+      "def": 130,
+      "hp": 260,
+      "fastMove": { "name": "Quick Tap", "type": "Normal", "power": 4, "energyGain": 4, "turns": 1 },
+      "chargedMoves": []
+    },
+    "config": { "maxTurns": 6 },
+    "expected": {
+      "reason": "turn_limit",
+      "rightActionCountGreaterThanLeft": true
+    }
+  }
+]

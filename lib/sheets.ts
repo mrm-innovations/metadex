@@ -159,3 +159,8 @@ export async function getPokedexDataset(options?: {
     pending = null;
   }
 }
+
+export function clearPokedexCache(): void {
+  cache = null;
+  pending = null;
+}

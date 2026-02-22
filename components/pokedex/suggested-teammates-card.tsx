@@ -4,10 +4,11 @@ import Image from "next/image";
 import Link from "next/link";
 import { useId, useMemo, useState } from "react";
 
+import { useDetailLeague } from "@/components/pokedex/detail-league-context";
 import { Pill } from "@/components/pokedex/pill";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   formatCoveredTypes,
   type SuggestedTeammateEntry,
@@ -33,24 +34,21 @@ function formatLeagueFit(value: number): string {
   return `${Math.round(value * 100)}%`;
 }
 
-const LEAGUE_OPTIONS: Array<{ value: TeammateLeagueMode; label: string }> = [
-  { value: "general", label: "General" },
-  { value: "great", label: "Great League (1500)" },
-  { value: "ultra", label: "Ultra League (2500)" },
-  { value: "master", label: "Master League" },
-];
 const INITIAL_VISIBLE = 8;
 
 export function SuggestedTeammatesCard({
   teammatesByLeague,
   currentName,
+  showDeepAnalytics = false,
 }: {
   teammatesByLeague: Record<TeammateLeagueMode, SuggestedTeammateEntry[]>;
   currentName: string;
+  showDeepAnalytics?: boolean;
 }) {
+  const { league } = useDetailLeague();
   const listId = useId();
-  const [selectedLeague, setSelectedLeague] = useState<TeammateLeagueMode>("general");
   const [expanded, setExpanded] = useState(false);
+  const selectedLeague = league as TeammateLeagueMode;
   const selectedTeammates = useMemo(
     () => teammatesByLeague[selectedLeague] ?? [],
     [selectedLeague, teammatesByLeague],
@@ -58,40 +56,42 @@ export function SuggestedTeammatesCard({
   const hasMore = selectedTeammates.length > INITIAL_VISIBLE;
   const visibleTeammates =
     expanded || !hasMore ? selectedTeammates : selectedTeammates.slice(0, INITIAL_VISIBLE);
+  const averageCoverage =
+    selectedTeammates.length > 0
+      ? selectedTeammates.reduce((sum, entry) => sum + entry.coverage, 0) / selectedTeammates.length
+      : 0;
+  const averageLeagueFit =
+    selectedTeammates.length > 0
+      ? selectedTeammates.reduce((sum, entry) => sum + entry.leagueFit, 0) / selectedTeammates.length
+      : 0;
+  const uniqueCoveredWeaknesses = new Set(
+    selectedTeammates.flatMap((entry) => entry.coveredWeaknesses),
+  ).size;
 
   return (
-    <Card>
-      <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <Card data-testid="suggested-teammates-card" data-current-league={selectedLeague}>
+      <CardHeader>
         <div>
           <CardTitle className="text-lg">Suggested Teammates</CardTitle>
           <p className="text-muted-foreground text-sm">
             Picks that help cover {currentName}&apos;s weaknesses while staying battle-ready in GO.
           </p>
         </div>
-        <Select
-          value={selectedLeague}
-          onValueChange={(value) => {
-            setSelectedLeague(value as TeammateLeagueMode);
-            setExpanded(false);
-          }}
-        >
-          <SelectTrigger className="w-full sm:w-52" aria-label="League selector for suggested teammates">
-            <SelectValue placeholder="Select league" />
-          </SelectTrigger>
-          <SelectContent>
-            {LEAGUE_OPTIONS.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
       </CardHeader>
       <CardContent>
         <p className="text-muted-foreground text-sm">
-          Ranked by weakness coverage, team diversity, and {selectedLeague === "general" ? "overall GO strength." : "league fit."}
+          Ranked by weakness coverage, team diversity, and league fit.
         </p>
-        <p className="text-muted-foreground mt-1 text-xs">Each chip shows Coverage vs League Fit.</p>
+        <p className="text-muted-foreground mt-1 text-xs">
+          {showDeepAnalytics ? "Each chip shows Coverage, League Fit, and score context." : "Each chip shows Coverage vs League Fit."}
+        </p>
+        {showDeepAnalytics ? (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            <Badge variant="outline">Avg Cov {formatCoverageScore(averageCoverage)}</Badge>
+            <Badge variant="outline">Avg LFit {formatLeagueFit(averageLeagueFit)}</Badge>
+            <Badge variant="outline">Distinct covered types {uniqueCoveredWeaknesses}</Badge>
+          </div>
+        ) : null}
         {selectedTeammates.length > 0 ? (
           <>
           <div id={listId} className="mt-3 flex flex-wrap gap-2.5">
@@ -125,13 +125,18 @@ export function SuggestedTeammatesCard({
                       <span className="bg-background/80 rounded border border-border/60 px-1.5 py-0.5">
                         LFit {formatLeagueFit(entry.leagueFit)}
                       </span>
+                      {showDeepAnalytics ? (
+                        <span className="bg-background/80 rounded border border-border/60 px-1.5 py-0.5">
+                          Score {Math.round(entry.score * 100)}%
+                        </span>
+                      ) : null}
                     </span>
                   </Pill>
                 </Link>
               );
             })}
           </div>
-          {hasMore ? (
+          {showDeepAnalytics && hasMore ? (
             <Button
               type="button"
               variant="ghost"
