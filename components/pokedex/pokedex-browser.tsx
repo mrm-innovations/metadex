@@ -26,6 +26,7 @@ import { cn } from "@/lib/utils";
 
 const PAGE_SIZE = 25;
 const CLASSIFICATION_BATCH_SIZE = 60;
+const CLASSIFICATION_CHUNK_PARALLELISM = 4;
 const SEARCH_DEBOUNCE_MS = 250;
 const DEFAULT_SORT: PokedexSortKey = "nat";
 const DEFAULT_CLASSIFICATION_FILTER: ClassificationFilter = "all";
@@ -169,46 +170,66 @@ export function PokedexBrowser({
     const sourceRows = classificationFilter === "all" ? pagedRows : filteredAndSortedRows;
     return [...new Set(sourceRows.map((row) => row.nat))];
   }, [classificationFilter, filteredAndSortedRows, pagedRows]);
+  const missingClassificationNats = useMemo(
+    () => classificationTargetNats.filter((nat) => !(nat in classificationByNat)),
+    [classificationByNat, classificationTargetNats],
+  );
 
   const isClassificationLoading =
     classificationFilter !== "all" &&
-    classificationTargetNats.some((nat) => !(nat in classificationByNat));
+    missingClassificationNats.length > 0;
 
   useEffect(() => {
-    const missingNats = classificationTargetNats.filter((nat) => !(nat in classificationByNat));
-    if (missingNats.length === 0) {
+    if (missingClassificationNats.length === 0) {
       return;
     }
 
     const controller = new AbortController();
     const chunks: string[][] = [];
-    for (let i = 0; i < missingNats.length; i += CLASSIFICATION_BATCH_SIZE) {
-      chunks.push(missingNats.slice(i, i + CLASSIFICATION_BATCH_SIZE));
+    for (let i = 0; i < missingClassificationNats.length; i += CLASSIFICATION_BATCH_SIZE) {
+      chunks.push(missingClassificationNats.slice(i, i + CLASSIFICATION_BATCH_SIZE));
     }
 
     void (async () => {
-      const merged: Record<string, PokemonClassification | null> = {};
-      for (const chunk of chunks) {
-        const query = encodeURIComponent(chunk.join(","));
-        const response = await fetch(`/api/classification?nats=${query}`, { signal: controller.signal });
-        if (!response.ok) {
-          continue;
+      for (let index = 0; index < chunks.length; index += CLASSIFICATION_CHUNK_PARALLELISM) {
+        const group = chunks.slice(index, index + CLASSIFICATION_CHUNK_PARALLELISM);
+        const resolvedGroup = await Promise.all(
+          group.map(async (chunk) => {
+            const query = encodeURIComponent(chunk.join(","));
+            const response = await fetch(`/api/classification?nats=${query}`, {
+              signal: controller.signal,
+            });
+            if (!response.ok) {
+              return null;
+            }
+
+            const json = (await response.json()) as {
+              data?: Record<string, PokemonClassification | null>;
+            };
+            return json.data ?? null;
+          }),
+        );
+
+        const mergedBatch: Record<string, PokemonClassification | null> = Object.assign(
+          {} as Record<string, PokemonClassification | null>,
+          ...resolvedGroup.filter(
+            (entry): entry is Record<string, PokemonClassification | null> => entry !== null,
+          ),
+        );
+
+        if (Object.keys(mergedBatch).length > 0) {
+          setClassificationByNat((current) => {
+            let hasChanges = false;
+            const next = { ...current };
+            for (const [nat, value] of Object.entries(mergedBatch)) {
+              if (!(nat in next)) {
+                next[nat] = value;
+                hasChanges = true;
+              }
+            }
+            return hasChanges ? next : current;
+          });
         }
-
-        const json = (await response.json()) as {
-          data?: Record<string, PokemonClassification | null>;
-        };
-
-        if (json.data) {
-          Object.assign(merged, json.data);
-        }
-      }
-
-      if (Object.keys(merged).length > 0) {
-        setClassificationByNat((current) => ({
-          ...current,
-          ...merged,
-        }));
       }
     })()
       .catch(() => {
@@ -216,7 +237,7 @@ export function PokedexBrowser({
       });
 
     return () => controller.abort();
-  }, [classificationByNat, classificationTargetNats]);
+  }, [missingClassificationNats]);
 
   useEffect(() => {
     const onScroll = () => {
@@ -399,6 +420,12 @@ export function PokedexBrowser({
             onPageChange={(nextPage) => setPage(Math.min(Math.max(nextPage, 1), totalPages))}
           />
         </>
+      ) : classificationFilter !== "all" && isClassificationLoading ? (
+        <Card>
+          <CardContent className="p-8 text-center">
+            <p className="text-muted-foreground">Resolving classifications...</p>
+          </CardContent>
+        </Card>
       ) : (
         <Card>
           <CardContent className="p-8 text-center">
