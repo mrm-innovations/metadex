@@ -23,7 +23,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { DETAIL_LEAGUES, DETAIL_LEAGUE_OPTIONS, type DetailLeague } from "@/lib/detail-league";
+import { DETAIL_LEAGUES, DETAIL_LEAGUE_OPTIONS, parseDetailLeague, type DetailLeague } from "@/lib/detail-league";
+import { POGO_CPM_TABLE } from "@/lib/pvp";
 import { cn } from "@/lib/utils";
 
 type PokemonOption = {
@@ -31,6 +32,9 @@ type PokemonOption = {
   name: string;
   type1: string;
   type2?: string;
+  pogoAtk: number | null;
+  pogoDef: number | null;
+  pogoHp: number | null;
 };
 
 type MoveEntry = {
@@ -91,12 +95,91 @@ type MatchupConfidence = {
   notes: string[];
 };
 
+type SideResolvedStats = {
+  atk: number;
+  def: number;
+  hp: number;
+  atkIv: number;
+  defIv: number;
+  hpIv: number;
+  level: number;
+  cp: number;
+  ivPreset: IvPreset;
+  levelPreset: LevelPreset;
+};
+
+type MatchupMeta = {
+  confidence?: MatchupConfidence;
+  left?: { stats?: SideResolvedStats };
+  right?: { stats?: SideResolvedStats };
+};
+
 type TimelineFilter = "all" | "charged" | "shielded";
+type IvPreset = "hundo" | "pvp_rank1" | "custom";
+type LevelPreset = "auto" | "40" | "50" | "custom";
+type SideProfileValidation = {
+  error: string | null;
+};
 
 const DEFAULT_LEFT_NAT = "3";
 const DEFAULT_RIGHT_NAT = "6";
 const TIMELINE_PREVIEW = 12;
 const TIMELINE_PAGE_SIZE = 10;
+
+const IV_PRESET_OPTIONS: Array<{ value: IvPreset; label: string }> = [
+  { value: "hundo", label: "Hundo (15/15/15)" },
+  { value: "pvp_rank1", label: "PvP Rank #1" },
+  { value: "custom", label: "Custom IVs" },
+];
+
+const LEVEL_PRESET_OPTIONS: Array<{ value: LevelPreset; label: string }> = [
+  { value: "auto", label: "Auto (League cap)" },
+  { value: "40", label: "Level 40" },
+  { value: "50", label: "Level 50" },
+  { value: "custom", label: "Custom level" },
+];
+const CPM_SQUARED_BY_LEVEL = new Map(POGO_CPM_TABLE.map((entry) => [entry.level, entry.cpmSquared]));
+
+function formatLevel(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+function parseIntInRange(
+  value: string,
+  min: number,
+  max: number,
+): number | null {
+  const parsed = Number.parseInt(value.trim(), 10);
+  if (!Number.isFinite(parsed) || parsed < min || parsed > max) {
+    return null;
+  }
+  return parsed;
+}
+
+function parseLevelInRange(value: string): number | null {
+  const parsed = Number.parseFloat(value.trim());
+  if (!Number.isFinite(parsed) || parsed < 1 || parsed > 50) {
+    return null;
+  }
+  if (Math.round(parsed * 2) !== parsed * 2) {
+    return null;
+  }
+  return Math.round(parsed * 2) / 2;
+}
+
+function calculateCp(
+  baseAtk: number,
+  baseDef: number,
+  baseHp: number,
+  atkIv: number,
+  defIv: number,
+  hpIv: number,
+  cpmSquared: number,
+): number {
+  return Math.floor(
+    (((baseAtk + atkIv) * Math.sqrt(baseDef + defIv) * Math.sqrt(baseHp + hpIv) * cpmSquared) / 10),
+  );
+}
 
 function formatNatLabel(nat: string): string {
   const parsed = Number.parseFloat(nat.replace(/[^0-9.]/g, ""));
@@ -332,6 +415,141 @@ function PokemonSelectCombobox({
   );
 }
 
+function SideProfileControls({
+  sideLabel,
+  ivPreset,
+  onIvPresetChange,
+  levelPreset,
+  onLevelPresetChange,
+  customLevel,
+  onCustomLevelChange,
+  atkIv,
+  defIv,
+  hpIv,
+  onAtkIvChange,
+  onDefIvChange,
+  onHpIvChange,
+  resolvedStats,
+  validationError,
+}: {
+  sideLabel: "Left" | "Right";
+  ivPreset: IvPreset;
+  onIvPresetChange: (value: IvPreset) => void;
+  levelPreset: LevelPreset;
+  onLevelPresetChange: (value: LevelPreset) => void;
+  customLevel: string;
+  onCustomLevelChange: (value: string) => void;
+  atkIv: string;
+  defIv: string;
+  hpIv: string;
+  onAtkIvChange: (value: string) => void;
+  onDefIvChange: (value: string) => void;
+  onHpIvChange: (value: string) => void;
+  resolvedStats: SideResolvedStats | null;
+  validationError: string | null;
+}) {
+  return (
+    <div className="w-full space-y-2 rounded-md border border-border/60 p-2">
+      <p className="text-muted-foreground text-[11px] font-medium">{sideLabel} stat profile</p>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <Select value={ivPreset} onValueChange={(value) => onIvPresetChange(value as IvPreset)}>
+          <SelectTrigger aria-label={`${sideLabel} IV preset selector`}>
+            <SelectValue placeholder="IV preset" />
+          </SelectTrigger>
+          <SelectContent>
+            {IV_PRESET_OPTIONS.map((option) => (
+              <SelectItem key={`${sideLabel}-iv-${option.value}`} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={levelPreset} onValueChange={(value) => onLevelPresetChange(value as LevelPreset)}>
+          <SelectTrigger aria-label={`${sideLabel} level preset selector`}>
+            <SelectValue placeholder="Level" />
+          </SelectTrigger>
+          <SelectContent>
+            {LEVEL_PRESET_OPTIONS.map((option) => (
+              <SelectItem key={`${sideLabel}-level-${option.value}`} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      {ivPreset === "custom" ? (
+        <div className="grid grid-cols-3 gap-2">
+          <Input
+            type="number"
+            min={0}
+            max={15}
+            value={atkIv}
+            onChange={(event) => onAtkIvChange(event.target.value)}
+            aria-label={`${sideLabel} ATK IV input`}
+            placeholder="ATK IV"
+          />
+          <Input
+            type="number"
+            min={0}
+            max={15}
+            value={defIv}
+            onChange={(event) => onDefIvChange(event.target.value)}
+            aria-label={`${sideLabel} DEF IV input`}
+            placeholder="DEF IV"
+          />
+          <Input
+            type="number"
+            min={0}
+            max={15}
+            value={hpIv}
+            onChange={(event) => onHpIvChange(event.target.value)}
+            aria-label={`${sideLabel} HP IV input`}
+            placeholder="HP IV"
+          />
+        </div>
+      ) : null}
+      {ivPreset !== "pvp_rank1" && levelPreset === "custom" ? (
+        <Input
+          type="number"
+          min={1}
+          max={50}
+          step={0.5}
+          value={customLevel}
+          onChange={(event) => onCustomLevelChange(event.target.value)}
+          aria-label={`${sideLabel} custom level input`}
+          placeholder="Level (1-50, 0.5)"
+        />
+      ) : null}
+      {ivPreset === "pvp_rank1" ? (
+        <p className="text-muted-foreground text-[10px]">
+          Uses league-specific rank #1 IVs and level.
+        </p>
+      ) : null}
+      {resolvedStats ? (
+        <div className="flex flex-wrap gap-1.5" data-testid={`${sideLabel.toLowerCase()}-resolved-profile`}>
+          <Badge variant="outline" className="h-5 rounded-full px-1.5 text-[10px]">
+            IV {resolvedStats.atkIv}/{resolvedStats.defIv}/{resolvedStats.hpIv}
+          </Badge>
+          <Badge variant="outline" className="h-5 rounded-full px-1.5 text-[10px]">
+            L{formatLevel(resolvedStats.level)}
+          </Badge>
+          <Badge variant="outline" className="h-5 rounded-full px-1.5 text-[10px]">
+            CP {resolvedStats.cp.toLocaleString()}
+          </Badge>
+        </div>
+      ) : null}
+      {validationError ? (
+        <p
+          className="text-[10px] text-rose-600 dark:text-rose-400"
+          data-testid={`${sideLabel.toLowerCase()}-profile-warning`}
+        >
+          {validationError}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 export function MatchupSimulator({ rows }: { rows: PokemonOption[] }) {
   const leftDefault = getDefaultNat(rows, DEFAULT_LEFT_NAT);
   const rightDefault = getDefaultNat(rows, DEFAULT_RIGHT_NAT);
@@ -342,6 +560,18 @@ export function MatchupSimulator({ rows }: { rows: PokemonOption[] }) {
   const [leftShields, setLeftShields] = useState("2");
   const [rightShields, setRightShields] = useState("2");
   const [maxTurns, setMaxTurns] = useState("300");
+  const [leftIvPreset, setLeftIvPreset] = useState<IvPreset>("hundo");
+  const [rightIvPreset, setRightIvPreset] = useState<IvPreset>("hundo");
+  const [leftLevelPreset, setLeftLevelPreset] = useState<LevelPreset>("auto");
+  const [rightLevelPreset, setRightLevelPreset] = useState<LevelPreset>("auto");
+  const [leftCustomLevel, setLeftCustomLevel] = useState("40");
+  const [rightCustomLevel, setRightCustomLevel] = useState("40");
+  const [leftAtkIv, setLeftAtkIv] = useState("15");
+  const [leftDefIv, setLeftDefIv] = useState("15");
+  const [leftHpIv, setLeftHpIv] = useState("15");
+  const [rightAtkIv, setRightAtkIv] = useState("15");
+  const [rightDefIv, setRightDefIv] = useState("15");
+  const [rightHpIv, setRightHpIv] = useState("15");
 
   const [leftPool, setLeftPool] = useState<MovePool | null>(null);
   const [rightPool, setRightPool] = useState<MovePool | null>(null);
@@ -355,9 +585,12 @@ export function MatchupSimulator({ rows }: { rows: PokemonOption[] }) {
   const [resultError, setResultError] = useState<string | null>(null);
   const [result, setResult] = useState<MatchupResult | null>(null);
   const [resultConfidence, setResultConfidence] = useState<MatchupConfidence | null>(null);
+  const [leftResolvedStats, setLeftResolvedStats] = useState<SideResolvedStats | null>(null);
+  const [rightResolvedStats, setRightResolvedStats] = useState<SideResolvedStats | null>(null);
   const [visibleTimelineCount, setVisibleTimelineCount] = useState(TIMELINE_PREVIEW);
   const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>("all");
   const [isSwapping, setIsSwapping] = useState(false);
+  const [urlHydrated, setUrlHydrated] = useState(false);
   const swapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const leftFastMoves = useMemo(() => buildFastMoves(leftPool), [leftPool]);
@@ -397,6 +630,324 @@ export function MatchupSimulator({ rows }: { rows: PokemonOption[] }) {
     () => rightChargedMoves.find((move) => move.id === rightChargedId) ?? null,
     [rightChargedId, rightChargedMoves],
   );
+  const validNats = useMemo(() => new Set(rows.map((row) => row.nat)), [rows]);
+  const leagueCap = DETAIL_LEAGUE_OPTIONS[league].pvpCap;
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const params = new URLSearchParams(window.location.search);
+    const leftNatParam = params.get("leftNat")?.trim();
+    const rightNatParam = params.get("rightNat")?.trim();
+    const parsedLeague = parseDetailLeague(params.get("league"), "great");
+    const leftShieldsParam = params.get("leftShields");
+    const rightShieldsParam = params.get("rightShields");
+    const maxTurnsParam = params.get("maxTurns");
+    const leftFastParam = params.get("leftFast")?.trim();
+    const rightFastParam = params.get("rightFast")?.trim();
+    const leftChargedParam = params.get("leftCharged")?.trim();
+    const rightChargedParam = params.get("rightCharged")?.trim();
+    const leftIvPresetParam = (params.get("leftIvPreset") ?? "").trim().toLowerCase();
+    const rightIvPresetParam = (params.get("rightIvPreset") ?? "").trim().toLowerCase();
+    const leftLevelPresetParam = (params.get("leftLevelPreset") ?? "").trim().toLowerCase();
+    const rightLevelPresetParam = (params.get("rightLevelPreset") ?? "").trim().toLowerCase();
+    const leftLevelParam = params.get("leftLevel")?.trim();
+    const rightLevelParam = params.get("rightLevel")?.trim();
+    const leftAtkIvParam = params.get("leftAtkIv")?.trim();
+    const leftDefIvParam = params.get("leftDefIv")?.trim();
+    const leftHpIvParam = params.get("leftHpIv")?.trim();
+    const rightAtkIvParam = params.get("rightAtkIv")?.trim();
+    const rightDefIvParam = params.get("rightDefIv")?.trim();
+    const rightHpIvParam = params.get("rightHpIv")?.trim();
+
+    setLeague(parsedLeague);
+    if (leftNatParam && validNats.has(leftNatParam)) {
+      setLeftNat(leftNatParam);
+    }
+    if (rightNatParam && validNats.has(rightNatParam)) {
+      setRightNat(rightNatParam);
+    }
+    if (leftShieldsParam === "0" || leftShieldsParam === "1" || leftShieldsParam === "2") {
+      setLeftShields(leftShieldsParam);
+    }
+    if (rightShieldsParam === "0" || rightShieldsParam === "1" || rightShieldsParam === "2") {
+      setRightShields(rightShieldsParam);
+    }
+    if (maxTurnsParam && Number.isFinite(Number.parseInt(maxTurnsParam, 10))) {
+      const parsedMaxTurns = Number.parseInt(maxTurnsParam, 10);
+      if (parsedMaxTurns >= 20 && parsedMaxTurns <= 1000) {
+        setMaxTurns(String(parsedMaxTurns));
+      }
+    }
+    if (leftFastParam) {
+      setLeftFastId(leftFastParam);
+    }
+    if (rightFastParam) {
+      setRightFastId(rightFastParam);
+    }
+    if (leftChargedParam) {
+      setLeftChargedId(leftChargedParam);
+    }
+    if (rightChargedParam) {
+      setRightChargedId(rightChargedParam);
+    }
+    if (
+      leftIvPresetParam === "hundo" ||
+      leftIvPresetParam === "pvp_rank1" ||
+      leftIvPresetParam === "custom"
+    ) {
+      setLeftIvPreset(leftIvPresetParam);
+    }
+    if (
+      rightIvPresetParam === "hundo" ||
+      rightIvPresetParam === "pvp_rank1" ||
+      rightIvPresetParam === "custom"
+    ) {
+      setRightIvPreset(rightIvPresetParam);
+    }
+    if (
+      leftLevelPresetParam === "auto" ||
+      leftLevelPresetParam === "40" ||
+      leftLevelPresetParam === "50" ||
+      leftLevelPresetParam === "custom"
+    ) {
+      setLeftLevelPreset(leftLevelPresetParam);
+    }
+    if (
+      rightLevelPresetParam === "auto" ||
+      rightLevelPresetParam === "40" ||
+      rightLevelPresetParam === "50" ||
+      rightLevelPresetParam === "custom"
+    ) {
+      setRightLevelPreset(rightLevelPresetParam);
+    }
+    if (leftLevelParam) {
+      setLeftCustomLevel(leftLevelParam);
+    }
+    if (rightLevelParam) {
+      setRightCustomLevel(rightLevelParam);
+    }
+    if (leftAtkIvParam) {
+      setLeftAtkIv(leftAtkIvParam);
+    }
+    if (leftDefIvParam) {
+      setLeftDefIv(leftDefIvParam);
+    }
+    if (leftHpIvParam) {
+      setLeftHpIv(leftHpIvParam);
+    }
+    if (rightAtkIvParam) {
+      setRightAtkIv(rightAtkIvParam);
+    }
+    if (rightDefIvParam) {
+      setRightDefIv(rightDefIvParam);
+    }
+    if (rightHpIvParam) {
+      setRightHpIv(rightHpIvParam);
+    }
+    setUrlHydrated(true);
+  }, [validNats]);
+
+  useEffect(() => {
+    if (!urlHydrated || typeof window === "undefined") {
+      return;
+    }
+    const params = new URLSearchParams();
+    params.set("league", league);
+    params.set("leftNat", leftNat);
+    params.set("rightNat", rightNat);
+    params.set("leftFast", leftFastId);
+    params.set("leftCharged", leftChargedId);
+    params.set("rightFast", rightFastId);
+    params.set("rightCharged", rightChargedId);
+    params.set("leftShields", leftShields);
+    params.set("rightShields", rightShields);
+    params.set("maxTurns", maxTurns);
+    params.set("leftIvPreset", leftIvPreset);
+    params.set("rightIvPreset", rightIvPreset);
+    params.set("leftLevelPreset", leftLevelPreset);
+    params.set("rightLevelPreset", rightLevelPreset);
+    params.set("leftLevel", leftCustomLevel);
+    params.set("rightLevel", rightCustomLevel);
+    params.set("leftAtkIv", leftAtkIv);
+    params.set("leftDefIv", leftDefIv);
+    params.set("leftHpIv", leftHpIv);
+    params.set("rightAtkIv", rightAtkIv);
+    params.set("rightDefIv", rightDefIv);
+    params.set("rightHpIv", rightHpIv);
+
+    const query = params.toString();
+    const nextUrl = query ? `${window.location.pathname}?${query}` : window.location.pathname;
+    const currentUrl = `${window.location.pathname}${window.location.search}`;
+    if (nextUrl !== currentUrl) {
+      window.history.replaceState(null, "", nextUrl);
+    }
+  }, [
+    leftAtkIv,
+    leftChargedId,
+    leftCustomLevel,
+    leftDefIv,
+    leftFastId,
+    leftHpIv,
+    leftIvPreset,
+    leftLevelPreset,
+    leftNat,
+    leftShields,
+    league,
+    maxTurns,
+    rightAtkIv,
+    rightChargedId,
+    rightCustomLevel,
+    rightDefIv,
+    rightFastId,
+    rightHpIv,
+    rightIvPreset,
+    rightLevelPreset,
+    rightNat,
+    rightShields,
+    urlHydrated,
+  ]);
+
+  const leftProfileValidation = useMemo<SideProfileValidation>(() => {
+    if (!leftSelected) {
+      return { error: null };
+    }
+    if (leftIvPreset === "pvp_rank1" || leftLevelPreset === "auto") {
+      return { error: null };
+    }
+    if (
+      leftSelected.pogoAtk === null ||
+      leftSelected.pogoDef === null ||
+      leftSelected.pogoHp === null
+    ) {
+      return { error: "Missing GO base stats for profile validation." };
+    }
+
+    let atkIv = 15;
+    let defIv = 15;
+    let hpIv = 15;
+    if (leftIvPreset === "custom") {
+      const parsedAtk = parseIntInRange(leftAtkIv, 0, 15);
+      const parsedDef = parseIntInRange(leftDefIv, 0, 15);
+      const parsedHp = parseIntInRange(leftHpIv, 0, 15);
+      if (parsedAtk === null || parsedDef === null || parsedHp === null) {
+        return { error: "Custom IVs must be integers between 0 and 15." };
+      }
+      atkIv = parsedAtk;
+      defIv = parsedDef;
+      hpIv = parsedHp;
+    }
+
+    const level =
+      leftLevelPreset === "40"
+        ? 40
+        : leftLevelPreset === "50"
+          ? 50
+          : parseLevelInRange(leftCustomLevel);
+    if (level === null) {
+      return { error: "Custom level must be 1-50 in 0.5 steps." };
+    }
+
+    const cpmSquared = CPM_SQUARED_BY_LEVEL.get(level);
+    if (!cpmSquared) {
+      return { error: `Level ${formatLevel(level)} is not supported.` };
+    }
+
+    const cp = calculateCp(
+      leftSelected.pogoAtk,
+      leftSelected.pogoDef,
+      leftSelected.pogoHp,
+      atkIv,
+      defIv,
+      hpIv,
+      cpmSquared,
+    );
+    if (Number.isFinite(leagueCap) && cp > leagueCap) {
+      return { error: `CP ${cp.toLocaleString()} exceeds ${DETAIL_LEAGUE_OPTIONS[league].shortLabel} cap ${leagueCap.toLocaleString()}.` };
+    }
+    return { error: null };
+  }, [
+    leftAtkIv,
+    leftCustomLevel,
+    leftDefIv,
+    leftHpIv,
+    leftIvPreset,
+    leftLevelPreset,
+    leftSelected,
+    league,
+    leagueCap,
+  ]);
+
+  const rightProfileValidation = useMemo<SideProfileValidation>(() => {
+    if (!rightSelected) {
+      return { error: null };
+    }
+    if (rightIvPreset === "pvp_rank1" || rightLevelPreset === "auto") {
+      return { error: null };
+    }
+    if (
+      rightSelected.pogoAtk === null ||
+      rightSelected.pogoDef === null ||
+      rightSelected.pogoHp === null
+    ) {
+      return { error: "Missing GO base stats for profile validation." };
+    }
+
+    let atkIv = 15;
+    let defIv = 15;
+    let hpIv = 15;
+    if (rightIvPreset === "custom") {
+      const parsedAtk = parseIntInRange(rightAtkIv, 0, 15);
+      const parsedDef = parseIntInRange(rightDefIv, 0, 15);
+      const parsedHp = parseIntInRange(rightHpIv, 0, 15);
+      if (parsedAtk === null || parsedDef === null || parsedHp === null) {
+        return { error: "Custom IVs must be integers between 0 and 15." };
+      }
+      atkIv = parsedAtk;
+      defIv = parsedDef;
+      hpIv = parsedHp;
+    }
+
+    const level =
+      rightLevelPreset === "40"
+        ? 40
+        : rightLevelPreset === "50"
+          ? 50
+          : parseLevelInRange(rightCustomLevel);
+    if (level === null) {
+      return { error: "Custom level must be 1-50 in 0.5 steps." };
+    }
+
+    const cpmSquared = CPM_SQUARED_BY_LEVEL.get(level);
+    if (!cpmSquared) {
+      return { error: `Level ${formatLevel(level)} is not supported.` };
+    }
+
+    const cp = calculateCp(
+      rightSelected.pogoAtk,
+      rightSelected.pogoDef,
+      rightSelected.pogoHp,
+      atkIv,
+      defIv,
+      hpIv,
+      cpmSquared,
+    );
+    if (Number.isFinite(leagueCap) && cp > leagueCap) {
+      return { error: `CP ${cp.toLocaleString()} exceeds ${DETAIL_LEAGUE_OPTIONS[league].shortLabel} cap ${leagueCap.toLocaleString()}.` };
+    }
+    return { error: null };
+  }, [
+    league,
+    leagueCap,
+    rightAtkIv,
+    rightCustomLevel,
+    rightDefIv,
+    rightHpIv,
+    rightIvPreset,
+    rightLevelPreset,
+    rightSelected,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -481,12 +1032,15 @@ export function MatchupSimulator({ rows }: { rows: PokemonOption[] }) {
   }, [rightNat]);
 
   const canSimulate =
+    urlHydrated &&
     Boolean(leftNat) &&
     Boolean(rightNat) &&
     Boolean(leftFastId) &&
     Boolean(leftChargedId) &&
     Boolean(rightFastId) &&
     Boolean(rightChargedId) &&
+    !leftProfileValidation.error &&
+    !rightProfileValidation.error &&
     !leftPoolLoading &&
     !rightPoolLoading;
 
@@ -511,15 +1065,25 @@ export function MatchupSimulator({ rows }: { rows: PokemonOption[] }) {
       rightShields,
       maxTurns,
       timeline: "1",
+      leftIvPreset,
+      rightIvPreset,
+      leftLevelPreset,
+      rightLevelPreset,
+      leftLevel: leftCustomLevel,
+      rightLevel: rightCustomLevel,
+      leftAtkIv,
+      leftDefIv,
+      leftHpIv,
+      rightAtkIv,
+      rightDefIv,
+      rightHpIv,
     });
 
     try {
       const response = await fetch(`/api/matchup?${params.toString()}`);
       const json = (await response.json()) as {
         data?: MatchupResult;
-        meta?: {
-          confidence?: MatchupConfidence;
-        };
+        meta?: MatchupMeta;
         error?: string;
         message?: string;
       };
@@ -528,9 +1092,13 @@ export function MatchupSimulator({ rows }: { rows: PokemonOption[] }) {
       }
       setResult(json.data);
       setResultConfidence(json.meta?.confidence ?? null);
+      setLeftResolvedStats(json.meta?.left?.stats ?? null);
+      setRightResolvedStats(json.meta?.right?.stats ?? null);
     } catch (error) {
       setResult(null);
       setResultConfidence(null);
+      setLeftResolvedStats(null);
+      setRightResolvedStats(null);
       setResultError(error instanceof Error ? error.message : "Unable to simulate matchup.");
     } finally {
       setResultLoading(false);
@@ -540,9 +1108,21 @@ export function MatchupSimulator({ rows }: { rows: PokemonOption[] }) {
     league,
     leftChargedId,
     leftFastId,
+    leftAtkIv,
+    leftCustomLevel,
+    leftDefIv,
+    leftHpIv,
+    leftIvPreset,
+    leftLevelPreset,
     leftNat,
     leftShields,
     maxTurns,
+    rightAtkIv,
+    rightCustomLevel,
+    rightDefIv,
+    rightHpIv,
+    rightIvPreset,
+    rightLevelPreset,
     rightChargedId,
     rightFastId,
     rightNat,
@@ -559,6 +1139,8 @@ export function MatchupSimulator({ rows }: { rows: PokemonOption[] }) {
   useEffect(() => {
     setResult(null);
     setResultConfidence(null);
+    setLeftResolvedStats(null);
+    setRightResolvedStats(null);
     setResultError(null);
   }, [
     league,
@@ -568,6 +1150,18 @@ export function MatchupSimulator({ rows }: { rows: PokemonOption[] }) {
     leftChargedId,
     rightFastId,
     rightChargedId,
+    leftIvPreset,
+    rightIvPreset,
+    leftLevelPreset,
+    rightLevelPreset,
+    leftCustomLevel,
+    rightCustomLevel,
+    leftAtkIv,
+    leftDefIv,
+    leftHpIv,
+    rightAtkIv,
+    rightDefIv,
+    rightHpIv,
     leftShields,
     rightShields,
     maxTurns,
@@ -774,6 +1368,18 @@ export function MatchupSimulator({ rows }: { rows: PokemonOption[] }) {
     setRightNat(leftNat);
     setLeftShields(rightShields);
     setRightShields(leftShields);
+    setLeftIvPreset(rightIvPreset);
+    setRightIvPreset(leftIvPreset);
+    setLeftLevelPreset(rightLevelPreset);
+    setRightLevelPreset(leftLevelPreset);
+    setLeftCustomLevel(rightCustomLevel);
+    setRightCustomLevel(leftCustomLevel);
+    setLeftAtkIv(rightAtkIv);
+    setLeftDefIv(rightDefIv);
+    setLeftHpIv(rightHpIv);
+    setRightAtkIv(leftAtkIv);
+    setRightDefIv(leftDefIv);
+    setRightHpIv(leftHpIv);
     swapTimeoutRef.current = setTimeout(() => {
       setIsSwapping(false);
     }, 220);
@@ -879,6 +1485,23 @@ export function MatchupSimulator({ rows }: { rows: PokemonOption[] }) {
                   <Skeleton className="h-16 w-full max-w-[340px]" />
                 ) : (
                   <>
+                    <SideProfileControls
+                      sideLabel="Left"
+                      ivPreset={leftIvPreset}
+                      onIvPresetChange={setLeftIvPreset}
+                      levelPreset={leftLevelPreset}
+                      onLevelPresetChange={setLeftLevelPreset}
+                      customLevel={leftCustomLevel}
+                      onCustomLevelChange={setLeftCustomLevel}
+                      atkIv={leftAtkIv}
+                      defIv={leftDefIv}
+                      hpIv={leftHpIv}
+                      onAtkIvChange={setLeftAtkIv}
+                      onDefIvChange={setLeftDefIv}
+                      onHpIvChange={setLeftHpIv}
+                      resolvedStats={leftResolvedStats}
+                      validationError={leftProfileValidation.error}
+                    />
                     <div className="flex w-full flex-wrap items-center justify-center gap-2">
                       <div className="w-[150px] sm:w-[160px]">
                         <Select value={leftFastId} onValueChange={setLeftFastId} disabled={leftFastMoves.length === 0}>
@@ -951,6 +1574,23 @@ export function MatchupSimulator({ rows }: { rows: PokemonOption[] }) {
                   <Skeleton className="h-16 w-full max-w-[340px]" />
                 ) : (
                   <>
+                    <SideProfileControls
+                      sideLabel="Right"
+                      ivPreset={rightIvPreset}
+                      onIvPresetChange={setRightIvPreset}
+                      levelPreset={rightLevelPreset}
+                      onLevelPresetChange={setRightLevelPreset}
+                      customLevel={rightCustomLevel}
+                      onCustomLevelChange={setRightCustomLevel}
+                      atkIv={rightAtkIv}
+                      defIv={rightDefIv}
+                      hpIv={rightHpIv}
+                      onAtkIvChange={setRightAtkIv}
+                      onDefIvChange={setRightDefIv}
+                      onHpIvChange={setRightHpIv}
+                      resolvedStats={rightResolvedStats}
+                      validationError={rightProfileValidation.error}
+                    />
                     <div className="flex w-full flex-wrap items-center justify-center gap-2">
                       <div className="w-[150px] sm:w-[160px]">
                         <Select value={rightFastId} onValueChange={setRightFastId} disabled={rightFastMoves.length === 0}>

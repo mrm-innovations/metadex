@@ -133,6 +133,10 @@ test("matchup api endpoint runs simulation and validates required params", async
       turnsElapsed: number;
       timeline: Array<{ action: string; moveName: string }>;
     };
+    meta?: {
+      left?: { stats?: { cp: number; level: number } };
+      right?: { stats?: { cp: number; level: number } };
+    };
   };
   expect(
     okResponse.ok(),
@@ -142,9 +146,16 @@ test("matchup api endpoint runs simulation and validates required params", async
   expect(["left", "right", "draw"]).toContain(okJson.data.winner);
   expect(okJson.data.turnsElapsed).toBeGreaterThan(0);
   expect(okJson.data.timeline.length).toBeGreaterThan(0);
+  expect(okJson.meta?.left?.stats?.cp ?? 0).toBeGreaterThan(0);
+  expect(okJson.meta?.right?.stats?.cp ?? 0).toBeGreaterThan(0);
 
   const badResponse = await request.get("/api/matchup?leftNat=3");
   expect(badResponse.status()).toBe(400);
+
+  const overCapResponse = await request.get(
+    "/api/matchup?leftNat=6&rightNat=6&league=great&leftIvPreset=hundo&leftLevelPreset=50",
+  );
+  expect(overCapResponse.status()).toBe(400);
 });
 
 test("pvp table updates across league selections", async ({ page }) => {
@@ -208,8 +219,10 @@ test("lab matchup simulator page loads and can run simulation", async ({ page })
   await expect(page.getByRole("heading", { name: "Lab: Matchup Sim" })).toBeVisible();
   await expect(page.getByTestId("matchup-sim-page")).toBeVisible();
 
-  await page.getByRole("button", { name: "Run simulation" }).click();
+  await page.getByRole("button", { name: /simulation/i }).click();
   await expect(page.getByTestId("matchup-result-card")).toContainText("Winner:");
+  await expect(page.getByTestId("left-resolved-profile")).toBeVisible();
+  await expect(page.getByTestId("right-resolved-profile")).toBeVisible();
 });
 
 test("lab teams page loads and syncs league in URL", async ({ page }) => {

@@ -16,6 +16,9 @@ type PokemonOption = {
   name: string;
   type1: string;
   type2?: string;
+  pogoAtk: number | null;
+  pogoDef: number | null;
+  pogoHp: number | null;
 };
 
 function buildOptions(rows: Awaited<ReturnType<typeof getPokedexDataset>>["rows"]): PokemonOption[] {
@@ -32,6 +35,9 @@ function buildOptions(rows: Awaited<ReturnType<typeof getPokedexDataset>>["rows"
       name: row.name,
       type1: row.type1,
       type2: row.type2,
+      pogoAtk: row.pogoAtk,
+      pogoDef: row.pogoDef,
+      pogoHp: row.pogoHp,
     }));
 }
 

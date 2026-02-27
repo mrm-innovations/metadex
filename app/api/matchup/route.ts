@@ -4,12 +4,28 @@ import { simulateBattle, type BattleMoveInput, type BattlePokemonInput } from "@
 import { getResolvedMovePool, type GoMove, type ResolvedPokemonMovePool } from "@/lib/moves";
 import { parseNatSortValue } from "@/lib/pokedex";
 import { type PokemonRow } from "@/lib/normalize";
+import { getTopPvPIVs, POGO_CPM_TABLE } from "@/lib/pvp";
 import { getPokedexDataset } from "@/lib/sheets";
 
 export const revalidate = 300;
 
 type SideKey = "left" | "right";
 type MatchupConfidenceLevel = "high" | "medium" | "low";
+type IvPreset = "hundo" | "pvp_rank1" | "custom";
+type LevelPreset = "auto" | "40" | "50" | "custom";
+
+type ResolvedStatProfile = {
+  atk: number;
+  def: number;
+  hp: number;
+  atkIv: number;
+  defIv: number;
+  hpIv: number;
+  level: number;
+  cp: number;
+  ivPreset: IvPreset;
+  levelPreset: LevelPreset;
+};
 
 function parseIntInRange(
   value: string | null,
@@ -25,6 +41,209 @@ function parseIntInRange(
     return null;
   }
   return parsed;
+}
+
+function parseFloatInRange(
+  value: string | null,
+  fallback: number,
+  min: number,
+  max: number,
+): number | null {
+  if (!value) {
+    return fallback;
+  }
+  const parsed = Number.parseFloat(value);
+  if (!Number.isFinite(parsed) || parsed < min || parsed > max) {
+    return null;
+  }
+  return parsed;
+}
+
+function parseIvPreset(value: string | null): IvPreset {
+  const normalized = (value ?? "").trim().toLowerCase();
+  if (normalized === "custom") {
+    return "custom";
+  }
+  if (normalized === "pvp_rank1") {
+    return "pvp_rank1";
+  }
+  return "hundo";
+}
+
+function parseLevelPreset(value: string | null): LevelPreset {
+  const normalized = (value ?? "").trim().toLowerCase();
+  if (normalized === "40" || normalized === "50" || normalized === "custom") {
+    return normalized;
+  }
+  return "auto";
+}
+
+function getLeagueCap(league: string): number {
+  if (league === "great") {
+    return 1500;
+  }
+  if (league === "ultra") {
+    return 2500;
+  }
+  return Number.POSITIVE_INFINITY;
+}
+
+function calculateCp(
+  baseAtk: number,
+  baseDef: number,
+  baseHp: number,
+  atkIv: number,
+  defIv: number,
+  hpIv: number,
+  cpmSquared: number,
+): number {
+  return Math.floor(
+    (((baseAtk + atkIv) * Math.sqrt(baseDef + defIv) * Math.sqrt(baseHp + hpIv) * cpmSquared) / 10),
+  );
+}
+
+function findLevelEntry(level: number): { level: number; cpm: number; cpmSquared: number } | null {
+  const rounded = Math.round(level * 2) / 2;
+  return POGO_CPM_TABLE.find((entry) => entry.level === rounded) ?? null;
+}
+
+function findHighestLevelUnderCap(
+  baseAtk: number,
+  baseDef: number,
+  baseHp: number,
+  atkIv: number,
+  defIv: number,
+  hpIv: number,
+  leagueCap: number,
+): { level: number; cpm: number; cpmSquared: number; cp: number } | null {
+  const descending = [...POGO_CPM_TABLE].sort((a, b) => b.level - a.level);
+
+  if (!Number.isFinite(leagueCap)) {
+    const max = descending[0];
+    if (!max) {
+      return null;
+    }
+    return {
+      ...max,
+      cp: calculateCp(baseAtk, baseDef, baseHp, atkIv, defIv, hpIv, max.cpmSquared),
+    };
+  }
+
+  for (const entry of descending) {
+    const cp = calculateCp(baseAtk, baseDef, baseHp, atkIv, defIv, hpIv, entry.cpmSquared);
+    if (cp <= leagueCap) {
+      return { ...entry, cp };
+    }
+  }
+
+  return null;
+}
+
+function resolveStatProfile(args: {
+  side: SideKey;
+  row: PokemonRow;
+  leagueCap: number;
+  ivPreset: IvPreset;
+  levelPreset: LevelPreset;
+  customLevelRaw: string | null;
+  customAtkIvRaw: string | null;
+  customDefIvRaw: string | null;
+  customHpIvRaw: string | null;
+}): { data: ResolvedStatProfile } | { error: string } {
+  const baseAtk = args.row.pogoAtk ?? args.row.mainAtk ?? null;
+  const baseDef = args.row.pogoDef ?? args.row.mainDef ?? null;
+  const baseHp = args.row.pogoHp ?? args.row.mainHp ?? null;
+  if (baseAtk === null || baseDef === null || baseHp === null) {
+    return { error: `${args.side} side is missing required battle stats.` };
+  }
+
+  let atkIv = 15;
+  let defIv = 15;
+  let hpIv = 15;
+  let level = 50;
+  let cp = 0;
+
+  if (args.ivPreset === "pvp_rank1") {
+    const top = getTopPvPIVs(args.row, args.leagueCap, 1)[0];
+    if (!top) {
+      return { error: `${args.side} side has no PvP rank data for the selected league.` };
+    }
+
+    atkIv = top.atkIV;
+    defIv = top.defIV;
+    hpIv = top.hpIV;
+    level = top.level;
+    cp = top.cp;
+  } else {
+    if (args.ivPreset === "custom") {
+      const parsedAtkIv = parseIntInRange(args.customAtkIvRaw, 15, 0, 15);
+      const parsedDefIv = parseIntInRange(args.customDefIvRaw, 15, 0, 15);
+      const parsedHpIv = parseIntInRange(args.customHpIvRaw, 15, 0, 15);
+      if (parsedAtkIv === null || parsedDefIv === null || parsedHpIv === null) {
+        return { error: `${args.side} custom IVs must be integers between 0 and 15.` };
+      }
+      atkIv = parsedAtkIv;
+      defIv = parsedDefIv;
+      hpIv = parsedHpIv;
+    }
+
+    if (args.levelPreset === "auto") {
+      const best = findHighestLevelUnderCap(baseAtk, baseDef, baseHp, atkIv, defIv, hpIv, args.leagueCap);
+      if (!best) {
+        return { error: `${args.side} profile does not fit under league cap.` };
+      }
+      level = best.level;
+      cp = best.cp;
+    } else {
+      const manualLevel =
+        args.levelPreset === "40"
+          ? 40
+          : args.levelPreset === "50"
+            ? 50
+            : parseFloatInRange(args.customLevelRaw, 40, 1, 50);
+
+      if (manualLevel === null || Math.round(manualLevel * 2) !== manualLevel * 2) {
+        return { error: `${args.side} level must be between 1 and 50 in 0.5 steps.` };
+      }
+
+      const entry = findLevelEntry(manualLevel);
+      if (!entry) {
+        return { error: `${args.side} level ${manualLevel} is not supported.` };
+      }
+
+      level = entry.level;
+      cp = calculateCp(baseAtk, baseDef, baseHp, atkIv, defIv, hpIv, entry.cpmSquared);
+      if (Number.isFinite(args.leagueCap) && cp > args.leagueCap) {
+        return {
+          error: `${args.side} profile CP ${cp} exceeds league cap ${Math.floor(args.leagueCap)}. Use auto level or lower IV/level.`,
+        };
+      }
+    }
+  }
+
+  const levelEntry = findLevelEntry(level);
+  if (!levelEntry) {
+    return { error: `${args.side} could not resolve CPM for level ${level}.` };
+  }
+
+  const atk = (baseAtk + atkIv) * levelEntry.cpm;
+  const def = (baseDef + defIv) * levelEntry.cpm;
+  const hp = Math.floor((baseHp + hpIv) * levelEntry.cpm);
+
+  return {
+    data: {
+      atk,
+      def,
+      hp,
+      atkIv,
+      defIv,
+      hpIv,
+      level,
+      cp,
+      ivPreset: args.ivPreset,
+      levelPreset: args.levelPreset,
+    },
+  };
 }
 
 function parseCsv(value: string | null): string[] {
@@ -140,6 +359,7 @@ function toBattleMoveInput(move: GoMove): BattleMoveInput {
 function buildSideInput(args: {
   side: SideKey;
   row: PokemonRow;
+  stats: ResolvedStatProfile;
   pool: ResolvedPokemonMovePool;
   fastQuery: string[];
   chargedQuery: string[];
@@ -156,21 +376,14 @@ function buildSideInput(args: {
     return { error: `${args.side} side has no available charged moves.` };
   }
 
-  const atk = args.row.pogoAtk ?? args.row.mainAtk ?? null;
-  const def = args.row.pogoDef ?? args.row.mainDef ?? null;
-  const hp = args.row.pogoHp ?? args.row.mainHp ?? null;
-  if (atk === null || def === null || hp === null) {
-    return { error: `${args.side} side is missing required battle stats.` };
-  }
-
   return {
     input: {
       name: args.row.name,
       type1: args.row.type1,
       type2: args.row.type2,
-      atk,
-      def,
-      hp,
+      atk: args.stats.atk,
+      def: args.stats.def,
+      hp: args.stats.hp,
       fastMove: toBattleMoveInput(fast),
       chargedMoves: charged.map(toBattleMoveInput),
       startingEnergy: args.startingEnergy,
@@ -315,6 +528,7 @@ export async function GET(request: Request) {
     const refresh = url.searchParams.get("refresh") === "1";
     const includeTimeline = url.searchParams.get("timeline") !== "0";
     const league = url.searchParams.get("league")?.trim().toLowerCase() ?? "great";
+    const leagueCap = getLeagueCap(league);
 
     if (!leftNat || !rightNat) {
       return NextResponse.json(
@@ -328,6 +542,10 @@ export async function GET(request: Request) {
     const leftEnergy = parseIntInRange(url.searchParams.get("leftEnergy"), 0, 0, 100);
     const rightEnergy = parseIntInRange(url.searchParams.get("rightEnergy"), 0, 0, 100);
     const maxTurns = parseIntInRange(url.searchParams.get("maxTurns"), 300, 20, 1000);
+    const leftIvPreset = parseIvPreset(url.searchParams.get("leftIvPreset"));
+    const rightIvPreset = parseIvPreset(url.searchParams.get("rightIvPreset"));
+    const leftLevelPreset = parseLevelPreset(url.searchParams.get("leftLevelPreset"));
+    const rightLevelPreset = parseLevelPreset(url.searchParams.get("rightLevelPreset"));
 
     if (
       leftShields === null ||
@@ -365,9 +583,40 @@ export async function GET(request: Request) {
     const leftPool = leftPoolResult ?? buildFallbackPool(leftRow);
     const rightPool = rightPoolResult ?? buildFallbackPool(rightRow);
 
+    const leftStatsResolved = resolveStatProfile({
+      side: "left",
+      row: leftRow,
+      leagueCap,
+      ivPreset: leftIvPreset,
+      levelPreset: leftLevelPreset,
+      customLevelRaw: url.searchParams.get("leftLevel"),
+      customAtkIvRaw: url.searchParams.get("leftAtkIv"),
+      customDefIvRaw: url.searchParams.get("leftDefIv"),
+      customHpIvRaw: url.searchParams.get("leftHpIv"),
+    });
+    if ("error" in leftStatsResolved) {
+      return NextResponse.json({ error: leftStatsResolved.error }, { status: 400 });
+    }
+
+    const rightStatsResolved = resolveStatProfile({
+      side: "right",
+      row: rightRow,
+      leagueCap,
+      ivPreset: rightIvPreset,
+      levelPreset: rightLevelPreset,
+      customLevelRaw: url.searchParams.get("rightLevel"),
+      customAtkIvRaw: url.searchParams.get("rightAtkIv"),
+      customDefIvRaw: url.searchParams.get("rightDefIv"),
+      customHpIvRaw: url.searchParams.get("rightHpIv"),
+    });
+    if ("error" in rightStatsResolved) {
+      return NextResponse.json({ error: rightStatsResolved.error }, { status: 400 });
+    }
+
     const leftBuilt = buildSideInput({
       side: "left",
       row: leftRow,
+      stats: leftStatsResolved.data,
       pool: leftPool,
       fastQuery: parseCsv(url.searchParams.get("leftFast")),
       chargedQuery: parseCsv(url.searchParams.get("leftCharged")),
@@ -381,6 +630,7 @@ export async function GET(request: Request) {
     const rightBuilt = buildSideInput({
       side: "right",
       row: rightRow,
+      stats: rightStatsResolved.data,
       pool: rightPool,
       fastQuery: parseCsv(url.searchParams.get("rightFast")),
       chargedQuery: parseCsv(url.searchParams.get("rightCharged")),
@@ -414,6 +664,7 @@ export async function GET(request: Request) {
             usedFallbackPool: !leftPoolResult,
             fast: leftBuilt.selection.fast,
             charged: leftBuilt.selection.charged,
+            stats: leftStatsResolved.data,
           },
           right: {
             nat: rightRow.nat,
@@ -421,6 +672,7 @@ export async function GET(request: Request) {
             usedFallbackPool: !rightPoolResult,
             fast: rightBuilt.selection.fast,
             charged: rightBuilt.selection.charged,
+            stats: rightStatsResolved.data,
           },
           config: {
             leftShields,
